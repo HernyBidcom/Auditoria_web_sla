@@ -80,6 +80,7 @@
     .spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
     .error-box{background:rgba(211,47,47,.12);color:var(--crit);border:1px solid var(--crit);padding:12px 14px;border-radius:var(--radius)}
+    .hidden{display:none !important}
     .tabs{display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--border)}
     .tabs button{background:transparent;border-radius:var(--radius-sm) var(--radius-sm) 0 0;border-bottom:2px solid transparent;color:var(--muted-foreground)}
     .tabs button.on{color:var(--primary);border-bottom-color:var(--primary)}
@@ -174,7 +175,7 @@
     (function(){
       const tabs=['dashboard','detalle','hipotesis','referencias'];
       let tabActual='dashboard';
-      let dataDashboard=null, dataDetalle=[], dataReferencias=[];
+      let dataDashboard=null, dataDetalle=[], dataReferencias=[], dataHip=null;
 
       function int(v){ return (v||0).toLocaleString('es-AR'); }
       function pct(v){ if(!v && v!==0) return '0,0%'; return (v*100).toFixed(1).replace('.',',')+'%'; }
@@ -188,7 +189,7 @@
         document.querySelectorAll('#nav a[data-tab]').forEach(function(a){ a.classList.toggle('active',a.dataset.tab===t); });
         tabs.forEach(function(x){ document.getElementById(x).classList.toggle('active',x===t); });
         if(t==='detalle' && dataDetalle.length===0) cargarDetalle();
-        if(t==='hipotesis' && !document.getElementById('hip-body').innerHTML) cargarHipotesis();
+        if(t==='hipotesis' && !dataHip) cargarHipotesis();
         if(t==='referencias' && dataReferencias.length===0) cargarReferencias();
       }
       document.querySelectorAll('#nav a[data-tab]').forEach(function(a){ a.addEventListener('click',function(){ mostrarTab(a.dataset.tab); }); });
@@ -212,10 +213,11 @@
         return '<span class="badge badge-gray">'+esc(r)+'</span>';
       }
 
-      function cargarDashboard(){
+      function cargarDashboard(forzar){
         loading('dash-loading',true);
         setStatus('Consultando BigQuery…');
-        server('getWebDashboard', params(), function(d){
+        var p=params(); if(forzar===true) p.forzar=true;
+        server('getWebDashboard', p, function(d){
           dataDashboard=d;
           loading('dash-loading',false);
           document.getElementById('dash-kpis').innerHTML=
@@ -234,7 +236,7 @@
           document.querySelector('#tab-topcp tbody').innerHTML=(d.topCPs||[]).map(function(c){
             return '<tr><td>'+esc(c.canal)+'</td><td>'+esc(c.cp)+'</td><td>'+esc(c.localidad)+'</td><td>'+esc(c.tipo)+'</td><td>'+int(c.menores)+'</td></tr>';
           }).join('') || '<tr><td colspan="5" class="empty">Sin datos</td></tr>';
-          setStatus('Listo. '+int(d.total)+' ventas analizadas.');
+          setStatus('Listo. '+int(d.total)+' ventas analizadas.'+(d.cache?' (desde caché, 20 min)':''));
         }, function(){ loading('dash-loading',false); });
       }
 
@@ -270,28 +272,35 @@
 
       function cargarHipotesis(){
         loading('hip-loading',true);
-        if(dataDetalle.length===0){
-          server('getWebDetalle', params(), function(rows){ dataDetalle=rows; renderHipotesis(); loading('hip-loading',false); });
-        } else { renderHipotesis(); loading('hip-loading',false); }
+        setStatus('Calculando hipótesis…');
+        server('getWebHipotesis', params(), function(d){
+          dataHip=d;
+          loading('hip-loading',false);
+          renderHipotesis();
+          setStatus('Hipótesis listas: '+int(d.grupos)+' grupos.'+(d.cache?' (desde caché, 20 min)':''));
+        }, function(){ loading('hip-loading',false); });
       }
       function renderHipotesis(){
-        var filas=dataDetalle.filter(function(r){ return r.hipotesis_usa_sla_opuesto==='SI'; });
         var body=document.getElementById('hip-body');
+        var filas=(dataHip&&dataHip.filas)||[];
         if(!filas.length){ body.innerHTML='<div class="block empty">No se encontraron casos de hipótesis SLA opuesto.</div>'; return; }
-        var porCp={}; filas.forEach(function(r){ var k=r.canalizador+'|'+r.codigo_postal; if(!porCp[k]) porCp[k]=[r,0]; porCp[k][1]++; });
-        var top=Object.values(porCp).sort(function(a,b){ return b[1]-a[1]; }).slice(0,10);
+        var casos=filas.reduce(function(s,r){ return s+r.n; },0);
+        var exactos=filas.filter(function(r){ return r.coincide_con_sla_opuesto==='SI'; }).reduce(function(s,r){ return s+r.n; },0);
+        var dom=filas.filter(function(r){ return r.tipo_entrega==='DOMICILIO'; }).reduce(function(s,r){ return s+r.n; },0);
+        var porCp={}; filas.forEach(function(r){ var k=r.canalizador+'|'+r.codigo_postal; if(!porCp[k]) porCp[k]={r:r,n:0}; porCp[k].n+=r.n; });
+        var top=Object.keys(porCp).map(function(k){ return porCp[k]; }).sort(function(a,b){ return b.n-a.n; }).slice(0,10);
         var html='<div class="kpi-row">'+
-          kpi('','Casos hipótesis', int(filas.length), pct(filas.length/dataDetalle.length))+
-          kpi('bad','Exactos con SLA opuesto', int(filas.filter(function(r){return r.coincide_con_sla_opuesto==='SI';}).length), 'coinciden')+
-          kpi('','Domicilios afectados', int(filas.filter(function(r){return r.tipo_entrega==='DOMICILIO';}).length), 'usarían plazo sucursal')+
+          kpi('','Casos hipótesis', int(casos), pct(dataHip.total?casos/dataHip.total:0))+
+          kpi('bad','Exactos con SLA opuesto', int(exactos), 'coinciden')+
+          kpi('','Domicilios afectados', int(dom), 'usarían plazo sucursal')+
           '</div>';
-        html+='<div class="block"><h2>Casos con hipótesis SLA opuesto</h2><div class="table-wrap"><table id="tab-hip"><thead><tr><th>ID</th><th>Fecha</th><th>CP</th><th>Localidad</th><th>Canal</th><th>Tipo</th><th>Prometida</th><th>Plazo correcto</th><th>Plazo opuesto</th><th>Coincide</th></tr></thead><tbody>';
-        html+=filas.map(function(r){
-          return '<tr><td>'+esc(r.id_venta)+'</td><td>'+esc(r.fecha_compra)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+esc(r.canalizador)+'</td><td>'+esc(r.tipo_entrega)+'</td><td>'+esc(r.fecha_prometida)+'</td><td>'+(r.plazo_canalizador_dias==null?'':r.plazo_canalizador_dias)+'</td><td>'+(r.plazo_opuesto_dias==null?'':r.plazo_opuesto_dias)+'</td><td>'+esc(r.coincide_con_sla_opuesto)+'</td></tr>';
+        html+='<div class="block"><h2>Casos con hipótesis SLA opuesto (agrupados por fecha de compra, CP y promesa)</h2><div class="table-wrap"><table id="tab-hip"><thead><tr><th>Fecha compra</th><th>CP</th><th>Localidad</th><th>Canal</th><th>Tipo</th><th>Prometida</th><th>Plazo correcto</th><th>Plazo opuesto</th><th>Coincide</th><th>Ventas</th></tr></thead><tbody>';
+        html+=filas.slice(0,500).map(function(r){
+          return '<tr><td>'+esc(r.fecha_compra)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+esc(r.canalizador)+'</td><td>'+esc(r.tipo_entrega)+'</td><td>'+esc(r.fecha_prometida)+'</td><td>'+(r.plazo_canalizador_dias==null?'':r.plazo_canalizador_dias)+'</td><td>'+(r.plazo_opuesto_dias==null?'':r.plazo_opuesto_dias)+'</td><td>'+esc(r.coincide_con_sla_opuesto)+'</td><td>'+int(r.n)+'</td></tr>';
         }).join('');
         html+='</tbody></table></div></div>';
-        html+='<div class="block"><h2>Top 10 CPs con hipótesis</h2><div class="table-wrap"><table id="tab-hipcp"><thead><tr><th>Canalizador</th><th>CP</th><th>Localidad</th><th>Casos</th></tr></thead><tbody>';
-        html+=top.map(function(p){ var r=p[0]; return '<tr><td>'+esc(r.canalizador)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+int(p[1])+'</td></tr>'; }).join('');
+        html+='<div class="block"><h2>Top 10 CPs con hipótesis</h2><div class="table-wrap"><table id="tab-hipcp"><thead><tr><th>Canalizador</th><th>CP</th><th>Localidad</th><th>Ventas</th></tr></thead><tbody>';
+        html+=top.map(function(p){ var r=p.r; return '<tr><td>'+esc(r.canalizador)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+int(p.n)+'</td></tr>'; }).join('');
         html+='</tbody></table></div></div>';
         body.innerHTML=html;
       }
@@ -332,7 +341,15 @@
         var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nombre; a.click();
       }
 
-      document.getElementById('btnCargar').addEventListener('click', cargarDashboard);
+      document.getElementById('btnCargar').addEventListener('click', function(){
+        // Al cambiar periodo/filtros hay que descartar lo ya cargado en las otras pestañas
+        dataDetalle=[]; dataHip=null; dataReferencias=dataReferencias;
+        document.getElementById('hip-body').innerHTML='';
+        document.querySelector('#tab-detalle tbody').innerHTML='';
+        cargarDashboard(true);
+        if(tabActual==='detalle') cargarDetalle();
+        if(tabActual==='hipotesis') cargarHipotesis();
+      });
       document.getElementById('btnDescargarResumen').addEventListener('click', function(){
         if(!dataDashboard){ setStatus('Primero cargá el dashboard',true); return; }
         var rows=dataDashboard.porCanal.map(function(c){ return { canalizador:c.canal, total:c.total, ok:c.ok, menores:c.menores, hipotesis:c.hipotesis }; });
@@ -343,7 +360,7 @@
         descargarCSV('detalle_auditoria_web.csv', Object.keys(dataDetalle[0]), dataDetalle);
       });
       document.getElementById('btnDescargarHipotesis').addEventListener('click', function(){
-        var filas=dataDetalle.filter(function(r){ return r.hipotesis_usa_sla_opuesto==='SI'; });
+        var filas=(dataHip&&dataHip.filas)||[];
         if(!filas.length){ setStatus('No hay hipótesis para descargar',true); return; }
         descargarCSV('hipotesis_sla_opuesto.csv', Object.keys(filas[0]), filas);
       });

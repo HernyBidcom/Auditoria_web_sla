@@ -394,7 +394,7 @@ function loadCanalizadoresWeb_() {
   return map;
 }
 
-function prepararContextoWeb_(params, limite) {
+function prepararContextoWeb_(params, limite, agrupada) {
   const cfg = buildWebCfg_(params);
   const ref = loadCanalizadoresWeb_();
   if (!Object.keys(ref).length) {
@@ -406,51 +406,78 @@ function prepararContextoWeb_(params, limite) {
     ANDREANI: normFechaStr_(cfg.alta_ANDREANI),
     ENTREGAR: normFechaStr_(cfg.alta_ENTREGAR)
   };
-  const query = buildQuery_(cfg, limite);
+  const query = agrupada ? buildQueryAgrupada_(cfg) : buildQuery_(cfg, limite);
   console.log(query);
   const rows = consultarBigQuery_(query, CONFIG.LOCATION);
   return { cfg: cfg, ref: ref, altas: altas, usaHabiles: usaHabiles, rows: rows };
 }
 
+// ---------------------------------------------------------------------------
+// Cache (resultados chicos del tablero, 20 min)
+// ---------------------------------------------------------------------------
+function cacheKey_(prefijo, params) {
+  const p = params || {};
+  const raw = [prefijo, p.fecha_desde, p.fecha_hasta, p.tiendas_web, p.usar_dias_habiles].join('|');
+  const dig = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw);
+  return prefijo + '_' + Utilities.base64EncodeWebSafe(dig);
+}
+function cacheGet_(key) {
+  try { const v = CacheService.getScriptCache().get(key); return v ? JSON.parse(v) : null; }
+  catch (e) { return null; }
+}
+function cachePut_(key, obj, seg) {
+  try {
+    const s = JSON.stringify(obj);
+    if (s.length < 95000) CacheService.getScriptCache().put(key, s, seg || 1200);
+  } catch (e) { console.log('cache omitido: ' + e); }
+}
+
 function getWebDashboard(params) {
-  const limite = Math.min(parseInt(params.limite || '50000', 10), 100000);
-  const ctx = prepararContextoWeb_(params, limite);
+  params = params || {};
+  const key = cacheKey_('dash', params);
+  if (!params.forzar) {
+    const cached = cacheGet_(key);
+    if (cached) { cached.cache = true; return cached; }
+  }
+  // Consulta AGRUPADA: cada fila trae 'n' ventas iguales. Sin LIMIT => cubre el periodo completo.
+  const ctx = prepararContextoWeb_(params, 0, true);
   const porCanal = {}, porMes = {}, porCp = {};
-  let ok = 0, menores = 0, hipotesis = 0, sinRef = 0, sinFecha = 0;
+  let total = 0, ok = 0, menores = 0, hipotesis = 0, sinRef = 0, sinFecha = 0;
 
   ctx.rows.forEach(function (r) {
+    const n = Number(r.n || 1);
     const e = evaluarFila_(r, ctx.ref, ctx.altas, ctx.usaHabiles);
     const canal = e.canal || '(sin canal)';
     const mes = (e.fecha_compra || '').slice(0, 7) || 'sin-mes';
+    total += n;
 
     if (!porCanal[canal]) porCanal[canal] = { canal: canal, total: 0, ok: 0, menores: 0, hipotesis: 0 };
-    porCanal[canal].total++;
-    if (e.resultado === 'OK') { porCanal[canal].ok++; ok++; }
-    else if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') { porCanal[canal].menores++; menores++; }
-    else if (e.resultado === 'SIN REFERENCIA DE CP') sinRef++;
-    else if (e.resultado === 'SIN FECHA PROMETIDA') sinFecha++;
-    if (e.hipotesis_opuesto === 'SI') { porCanal[canal].hipotesis++; hipotesis++; }
+    porCanal[canal].total += n;
+    if (e.resultado === 'OK') { porCanal[canal].ok += n; ok += n; }
+    else if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') { porCanal[canal].menores += n; menores += n; }
+    else if (e.resultado === 'SIN REFERENCIA DE CP') sinRef += n;
+    else if (e.resultado === 'SIN FECHA PROMETIDA') sinFecha += n;
+    if (e.hipotesis_opuesto === 'SI') { porCanal[canal].hipotesis += n; hipotesis += n; }
 
     const kMes = mes + '|' + canal;
     if (!porMes[kMes]) porMes[kMes] = { mes: mes, canal: canal, total: 0, ok: 0, menores: 0, hipotesis: 0 };
-    porMes[kMes].total++;
-    if (e.resultado === 'OK') porMes[kMes].ok++;
-    if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') porMes[kMes].menores++;
-    if (e.hipotesis_opuesto === 'SI') porMes[kMes].hipotesis++;
+    porMes[kMes].total += n;
+    if (e.resultado === 'OK') porMes[kMes].ok += n;
+    if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') porMes[kMes].menores += n;
+    if (e.hipotesis_opuesto === 'SI') porMes[kMes].hipotesis += n;
 
     if (e.resultado === 'PROMESA MENOR AL CANALIZADOR' && e.cp) {
       const kCp = canal + '|' + e.cp + '|' + e.tipo;
       if (!porCp[kCp]) porCp[kCp] = { canal: canal, cp: e.cp, localidad: e.localidad, tipo: e.tipo, menores: 0 };
-      porCp[kCp].menores++;
+      porCp[kCp].menores += n;
     }
   });
 
-  const total = ctx.rows.length;
   const topCPs = Object.keys(porCp).map(function (k) { return porCp[k]; })
     .sort(function (a, b) { return b.menores - a.menores; })
     .slice(0, 15);
 
-  return {
+  const res = {
     total: total,
     ok: ok,
     menores: menores,
@@ -459,11 +486,15 @@ function getWebDashboard(params) {
     sinFecha: sinFecha,
     pctMenores: total ? Math.round(menores / total * 1000) / 10 : 0,
     pctHipotesis: total ? Math.round(hipotesis / total * 1000) / 10 : 0,
-    porCanal: Object.values(porCanal).sort(function (a, b) { return b.total - a.total; }),
-    porMes: Object.values(porMes).sort(),
+    porCanal: Object.keys(porCanal).map(function (k) { return porCanal[k]; })
+      .sort(function (a, b) { return b.total - a.total; }),
+    porMes: Object.keys(porMes).map(function (k) { return porMes[k]; })
+      .sort(function (a, b) { return a.mes.localeCompare(b.mes) || a.canal.localeCompare(b.canal); }),
     topCPs: topCPs,
     cfg: { fecha_desde: ctx.cfg.fecha_desde, fecha_hasta: ctx.cfg.fecha_hasta }
   };
+  cachePut_(key, res);
+  return res;
 }
 
 function getWebDetalle(params) {
@@ -492,6 +523,34 @@ function getWebDetalle(params) {
       hipotesis_usa_sla_opuesto: e.hipotesis_opuesto
     };
   });
+}
+
+function getWebHipotesis(params) {
+  params = params || {};
+  const key = cacheKey_('hip', params);
+  if (!params.forzar) {
+    const cached = cacheGet_(key);
+    if (cached) { cached.cache = true; return cached; }
+  }
+  const ctx = prepararContextoWeb_(params, 0, true);
+  let total = 0;
+  const filas = [];
+  ctx.rows.forEach(function (r) {
+    const n = Number(r.n || 1);
+    total += n;
+    const e = evaluarFila_(r, ctx.ref, ctx.altas, ctx.usaHabiles);
+    if (e.hipotesis_opuesto !== 'SI') return;
+    filas.push({
+      fecha_compra: e.fecha_compra, codigo_postal: e.cp, localidad: e.localidad,
+      canalizador: e.canal, tipo_entrega: e.tipo, fecha_prometida: e.fecha_prometida,
+      plazo_canalizador_dias: e.plazo, plazo_opuesto_dias: e.plazo_opuesto,
+      coincide_con_sla_opuesto: e.coincide_opuesto, n: n
+    });
+  });
+  filas.sort(function (a, b) { return b.n - a.n; });
+  const res = { total: total, grupos: filas.length, filas: filas.slice(0, 3000) };
+  cachePut_(key, res);
+  return res;
 }
 
 function getWebReferencias() {
@@ -593,6 +652,38 @@ function buildQuery_(cfg, limite) {
   ].filter(Boolean).join('\n');
 }
 
+// Igual que buildQuery_ pero agrupada en BigQuery: una fila por combinacion
+// (fecha compra, CP, medio, tipo, fecha prometida) con la cantidad de ventas en 'n'.
+function buildQueryAgrupada_(cfg) {
+  const desde = normFechaStr_(cfg.fecha_desde) || '2026-01-01';
+  const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
+
+  const filtroTienda = (cfg.tiendas_web || '').trim()
+    ? '  AND LOWER(chk.tienda) IN (' + cfg.tiendas_web.split(',')
+        .map(function (t) { return "'" + t.trim().toLowerCase().replace(/'/g, '') + "'"; }).join(', ') + ')'
+    : '';
+  const filtroMedio = '  AND chk.medio_envio_id IN (' + Object.keys(CONFIG.MEDIOS).join(', ') + ')';
+
+  return [
+    'SELECT',
+    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha))                      AS fecha_compra,",
+    "  REGEXP_EXTRACT(chk.cp, r'\\d{4}')                             AS codigo_postal,",
+    '  chk.medio_envio_id                                            AS medio_envio_id,',
+    "  CASE WHEN NULLIF(chk.sucursal_oca, '') IS NOT NULL",
+    "       THEN 'SUCURSAL' ELSE 'DOMICILIO' END                    AS tipo_entrega,",
+    '  chk.fecha_entrega                                             AS fecha_entrega,',
+    '  ANY_VALUE(chk.localidad)                                      AS localidad,',
+    '  COUNT(*)                                                      AS n',
+    'FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
+    "WHERE DATE(chk.fecha) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "  AND NULLIF(chk.fecha_entrega, '') IS NOT NULL",
+    "  AND NULLIF(chk.cp, '') IS NOT NULL",
+    filtroTienda,
+    filtroMedio,
+    'GROUP BY 1, 2, 3, 4, 5'
+  ].filter(Boolean).join('\n');
+}
+
 function evaluarFila_(r, ref, altas, usaHabiles) {
   const cp = r.codigo_postal ? String(r.codigo_postal) : '';
   const medioId = r.medio_envio_id != null ? Number(r.medio_envio_id) : null;
@@ -676,7 +767,9 @@ function numOrNull_(v) {
   return isNaN(n) ? null : n;
 }
 function fmtISO_(d) {
-  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  // Rapido: Utilities.formatDate era el cuello de botella (se llamaba varias veces por fila)
+  const m = d.getMonth() + 1, day = d.getDate();
+  return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
 }
 function parseISO_(s) {
   if (!s) return null;
