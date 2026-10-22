@@ -19,7 +19,11 @@ const CONFIG = {
   // Si da "not found in location X", cambiá LOCATION_LOGISTICA por X (ej. 'southamerica-east1').
   TABLA_LOGISTICA: 'data-governance-473116.sil_logistics.order_shippings',
   LOCATION_LOGISTICA: 'US',
+  // Para sumar un courier (ej. URBANO): agregar su id aca, un bloque en CANALIZADORES_DATA con el mismo
+  // nombre, su alta en ALTAS_DEFAULT, y verificar como lo informa order_shippings.carrier (se compara en mayusculas).
   MEDIOS: { 1: 'OCA', 34: 'ANDREANI', 33: 'ENTREGAR' },
+  // Alta (primer dia que se audita al courier): fechas desde las que order_shippings informa el carrier.
+  ALTAS_DEFAULT: { OCA: '2020-01-01', ANDREANI: '2026-09-26', ENTREGAR: '2026-09-09' },
   HOJAS: {
     CONFIG: 'Config', CANAL: 'Canalizadores',
     OUT: 'Auditoria Web', RESUMEN: 'Resumen',
@@ -366,6 +370,20 @@ function doGet(e) {
     .setTitle('Auditoria Web — Promesas vs Canalizadores');
 }
 
+function nombresCouriers_() {
+  return Object.keys(CONFIG.MEDIOS).map(function (id) { return CONFIG.MEDIOS[id]; });
+}
+function getWebCouriers() { return nombresCouriers_(); }
+
+// Altas por courier: lo que mande el usuario en params (alta_<COURIER>) o el valor por defecto
+function altasWeb_(cfg) {
+  const out = {};
+  nombresCouriers_().forEach(function (n) {
+    out[n] = normFechaStr_(cfg['alta_' + n]) || CONFIG.ALTAS_DEFAULT[n] || '';
+  });
+  return out;
+}
+
 function buildWebCfg_(params) {
   const hoy = fmtISO_(new Date());
   const p = params || {};
@@ -374,7 +392,7 @@ function buildWebCfg_(params) {
     fecha_hasta: normFechaStr_(p.fecha_hasta) || hoy,
     tiendas_web: String(p.tiendas_web || 'gadnic,bidcom').trim(),
     usar_dias_habiles: String(p.usar_dias_habiles || 'SI').toUpperCase().startsWith('SI') ? 'SI' : 'NO',
-    alta_OCA: normFechaStr_(p.alta_OCA) || '2020-01-01',
+    alta_OCA: normFechaStr_(p.alta_OCA) || '',
     alta_ANDREANI: normFechaStr_(p.alta_ANDREANI) || '',
     alta_ENTREGAR: normFechaStr_(p.alta_ENTREGAR) || '',
     canal: String(p.canal || '').toUpperCase()
@@ -406,11 +424,7 @@ function prepararContextoWeb_(params, limite, agrupada) {
     throw new Error('No se pudo cargar la referencia de canalizadores.');
   }
   const usaHabiles = String(cfg.usar_dias_habiles || 'SI').toUpperCase().startsWith('SI');
-  const altas = {
-    OCA: normFechaStr_(cfg.alta_OCA) || '2020-01-01',
-    ANDREANI: normFechaStr_(cfg.alta_ANDREANI),
-    ENTREGAR: normFechaStr_(cfg.alta_ENTREGAR)
-  };
+  const altas = altasWeb_(cfg);
   const query = agrupada ? buildQueryAgrupada_(cfg) : buildQuery_(cfg, limite);
   console.log(query);
   const rows = consultarBigQuery_(query, CONFIG.LOCATION);
@@ -447,7 +461,7 @@ function getWebDashboard(params) {
   // Consulta AGRUPADA: cada fila trae 'n' ventas iguales. Sin LIMIT => cubre el periodo completo.
   const ctx = prepararContextoWeb_(params, 0, true);
   const porCanal = {}, porMes = {}, porCp = {};
-  let total = 0, ok = 0, menores = 0, hipotesis = 0, sinRef = 0, sinFecha = 0;
+  let total = 0, ok = 0, menores = 0, hipotesis = 0, sinRef = 0, sinFecha = 0, noOperativo = 0;
 
   ctx.rows.forEach(function (r) {
     const n = Number(r.n || 1);
@@ -462,6 +476,7 @@ function getWebDashboard(params) {
     else if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') { porCanal[canal].menores += n; menores += n; }
     else if (e.resultado === 'SIN REFERENCIA DE CP') sinRef += n;
     else if (e.resultado === 'SIN FECHA PROMETIDA') sinFecha += n;
+    else if (e.resultado === 'CANALIZADOR NO OPERATIVO A LA FECHA') noOperativo += n;
     if (e.hipotesis_opuesto === 'SI') { porCanal[canal].hipotesis += n; hipotesis += n; }
 
     const kMes = mes + '|' + canal;
@@ -489,6 +504,7 @@ function getWebDashboard(params) {
     hipotesis: hipotesis,
     sinRef: sinRef,
     sinFecha: sinFecha,
+    noOperativo: noOperativo,
     pctMenores: total ? Math.round(menores / total * 1000) / 10 : 0,
     pctHipotesis: total ? Math.round(hipotesis / total * 1000) / 10 : 0,
     porCanal: Object.keys(porCanal).map(function (k) { return porCanal[k]; })
@@ -627,13 +643,17 @@ function buildQueryReal_(cfg) {
   const desde = normFechaStr_(cfg.fecha_desde) || '2026-09-01';
   const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
   const c = String(cfg.canal || '').toUpperCase().replace(/[^A-Z]/g, '');
-  const filtroCarrier = c ? "  AND UPPER(carrier) = '" + c + "'" : '';
+  const filtroCarrier = c
+    ? "  AND UPPER(carrier) = '" + c + "'"
+    : "  AND UPPER(carrier) IN (" + nombresCouriers_().map(function (n) { return "'" + n + "'"; }).join(', ') + ')';
   // A RETIRAR: delivered_at es cuando el CLIENTE retira -> se mide contra la llegada a sucursal
   const ref = "CASE WHEN delivery_mode = 'A RETIRAR' THEN DATE(arrived_for_pickup_at) ELSE DATE(delivered_at) END";
   return [
     'WITH b AS (',
     '  SELECT COALESCE(carrier, \'(sin carrier)\') AS carrier, delivery_mode,',
-    "    FORMAT_DATE('%Y-%m', DATE(ordered_at)) AS mes, promised_delivery_date AS prom,",
+    "    FORMAT_DATE('%Y-%m', DATE(ordered_at)) AS mes,",
+    "    FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(DATE(ordered_at), WEEK(MONDAY))) AS semana,",
+    '    promised_delivery_date AS prom,',
     '    ' + ref + ' AS ref_date',
     '  FROM `' + CONFIG.TABLA_LOGISTICA + '`',
     "  WHERE channel = 'WEB'",
@@ -642,7 +662,7 @@ function buildQueryReal_(cfg) {
     '    AND NOT is_preorder AND NOT is_modified AND NOT is_cancelled',
     filtroCarrier,
     ')',
-    'SELECT carrier, delivery_mode, mes,',
+    'SELECT carrier, delivery_mode, mes, semana,',
     '  COUNT(*) AS envios,',
     '  COUNTIF(ref_date IS NOT NULL) AS con_entrega,',
     '  COUNTIF(ref_date IS NOT NULL AND ref_date <= prom) AS a_tiempo,',
@@ -653,8 +673,8 @@ function buildQueryReal_(cfg) {
     '  COUNTIF(ref_date IS NULL AND prom >= CURRENT_DATE()) AS en_plazo_sin_entrega,',
     '  IFNULL(SUM(IF(ref_date IS NOT NULL, DATE_DIFF(ref_date, prom, DAY), 0)), 0) AS suma_dif_dias',
     'FROM b',
-    'GROUP BY 1, 2, 3',
-    'ORDER BY 1, 2, 3'
+    'GROUP BY 1, 2, 3, 4',
+    'ORDER BY 1, 2, 3, 4'
   ].filter(Boolean).join('\n');
 }
 
@@ -669,7 +689,7 @@ function getWebReal(params) {
   const query = buildQueryReal_(cfg);
   console.log(query);
   const rows = consultarBigQuery_(query, CONFIG.LOCATION_LOGISTICA).map(function (r) {
-    const o = { carrier: r.carrier, modo: r.delivery_mode, mes: r.mes };
+    const o = { carrier: r.carrier, modo: r.delivery_mode, mes: r.mes, semana: r.semana };
     ['envios', 'con_entrega', 'a_tiempo', 'tarde_1d', 'tarde_2_3d', 'tarde_4d_mas',
      'vencidas_sin_entrega', 'en_plazo_sin_entrega', 'suma_dif_dias'].forEach(function (k) { o[k] = Number(r[k] || 0); });
     return o;
@@ -729,7 +749,7 @@ function getWebCruce(params) {
   const cfg = buildWebCfg_(params);
   const ref = loadCanalizadoresWeb_();
   const usaHabiles = cfg.usar_dias_habiles === 'SI';
-  const altas = { OCA: cfg.alta_OCA || '2020-01-01', ANDREANI: cfg.alta_ANDREANI, ENTREGAR: cfg.alta_ENTREGAR };
+  const altas = altasWeb_(cfg);
   const query = buildQueryCruce_(cfg);
   console.log(query);
   const rows = consultarBigQuery_(query, CONFIG.LOCATION_LOGISTICA);
