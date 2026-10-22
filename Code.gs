@@ -639,6 +639,26 @@ function consultarBigQuery_(query, location) {
 // ---------------------------------------------------------------------------
 // Real vs prometido: fecha prometida (CHK_Carrito.fecha_entrega) contra entrega efectiva
 // ---------------------------------------------------------------------------
+// Categoria del estado de despacho (ERP) para una venta con promesa vencida y sin entrega real:
+//  COURIER       = ya esta en manos del courier (despachado / en transito / en ruta)
+//  SIN_DESPACHAR = no salio del deposito (preparado / en preparacion / en espera / modificar)  -> atraso nuestro
+//  FALLIDA       = intento de entrega fallido (no entregado / rebotado / retornando)
+//  FALTA_DATO    = el ERP dice entregado / disponible en sucursal pero el courier no informo fecha
+//  DEMORADO      = demorado (sin fecha de despacho) y cualquier estado no mapeado
+function categoriaEstado_(st) {
+  const x = String(st == null ? '' : st).toUpperCase().replace(/[ÁÀ]/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I')
+    .replace(/Ó/g, 'O').replace(/Ú/g, 'U').trim();
+  if (['DESPACHADO', 'EN TRANSITO', 'EN RUTA'].indexOf(x) >= 0) return 'COURIER';
+  if (['PREPARADO', 'EN PREPARACION', 'EN ESPERA', 'MODIFICAR'].indexOf(x) >= 0) return 'SIN_DESPACHAR';
+  if (['NO ENTREGADO', 'REBOTADO', 'RETORNANDO'].indexOf(x) >= 0) return 'FALLIDA';
+  if (['ENTREGADO', 'DISPONIBLE SUCURSAL'].indexOf(x) >= 0) return 'FALTA_DATO';
+  return 'DEMORADO';
+}
+const NOMBRE_CATEGORIA_ = {
+  COURIER: 'CON EL COURIER', SIN_DESPACHAR: 'SIN DESPACHAR (NUESTRO)', FALLIDA: 'ENTREGA FALLIDA',
+  FALTA_DATO: 'FALTA FECHA DEL COURIER', DEMORADO: 'DEMORADO / OTRO ESTADO'
+};
+
 function buildQueryReal_(cfg) {
   const desde = normFechaStr_(cfg.fecha_desde) || '2026-09-01';
   const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
@@ -653,6 +673,7 @@ function buildQueryReal_(cfg) {
     '  SELECT COALESCE(carrier, \'(sin carrier)\') AS carrier, delivery_mode,',
     "    FORMAT_DATE('%Y-%m', DATE(ordered_at)) AS mes,",
     "    FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(DATE(ordered_at), WEEK(MONDAY))) AS semana,",
+    '    dispatch_status,',
     '    promised_delivery_date AS prom,',
     '    ' + ref + ' AS ref_date',
     '  FROM `' + CONFIG.TABLA_LOGISTICA + '`',
@@ -662,7 +683,7 @@ function buildQueryReal_(cfg) {
     '    AND NOT is_preorder AND NOT is_modified AND NOT is_cancelled',
     filtroCarrier,
     ')',
-    'SELECT carrier, delivery_mode, mes, semana,',
+    'SELECT carrier, delivery_mode, mes, semana, dispatch_status,',
     '  COUNT(*) AS envios,',
     '  COUNTIF(ref_date IS NOT NULL) AS con_entrega,',
     '  COUNTIF(ref_date IS NOT NULL AND ref_date <= prom) AS a_tiempo,',
@@ -673,8 +694,8 @@ function buildQueryReal_(cfg) {
     '  COUNTIF(ref_date IS NULL AND prom >= CURRENT_DATE()) AS en_plazo_sin_entrega,',
     '  IFNULL(SUM(IF(ref_date IS NOT NULL, DATE_DIFF(ref_date, prom, DAY), 0)), 0) AS suma_dif_dias',
     'FROM b',
-    'GROUP BY 1, 2, 3, 4',
-    'ORDER BY 1, 2, 3, 4'
+    'GROUP BY 1, 2, 3, 4, 5',
+    'ORDER BY 1, 2, 3, 4, 5'
   ].filter(Boolean).join('\n');
 }
 
@@ -688,12 +709,27 @@ function getWebReal(params) {
   const cfg = buildWebCfg_(params);
   const query = buildQueryReal_(cfg);
   console.log(query);
-  const rows = consultarBigQuery_(query, CONFIG.LOCATION_LOGISTICA).map(function (r) {
-    const o = { carrier: r.carrier, modo: r.delivery_mode, mes: r.mes, semana: r.semana };
+  const acc = {};
+  consultarBigQuery_(query, CONFIG.LOCATION_LOGISTICA).forEach(function (r) {
+    const k = [r.carrier, r.delivery_mode, r.mes, r.semana].join('|');
+    if (!acc[k]) {
+      acc[k] = { carrier: r.carrier, modo: r.delivery_mode, mes: r.mes, semana: r.semana,
+        envios: 0, con_entrega: 0, a_tiempo: 0, tarde_1d: 0, tarde_2_3d: 0, tarde_4d_mas: 0,
+        en_plazo_sin_entrega: 0, suma_dif_dias: 0,
+        venc_courier: 0, venc_demorado: 0, venc_sin_despachar: 0, venc_fallida: 0, venc_falta_dato: 0 };
+    }
+    const o = acc[k];
     ['envios', 'con_entrega', 'a_tiempo', 'tarde_1d', 'tarde_2_3d', 'tarde_4d_mas',
-     'vencidas_sin_entrega', 'en_plazo_sin_entrega', 'suma_dif_dias'].forEach(function (k) { o[k] = Number(r[k] || 0); });
-    return o;
+     'en_plazo_sin_entrega', 'suma_dif_dias'].forEach(function (c) { o[c] += Number(r[c] || 0); });
+    const v = Number(r.vencidas_sin_entrega || 0);
+    const cat = categoriaEstado_(r.dispatch_status);
+    if (cat === 'COURIER') o.venc_courier += v;
+    else if (cat === 'SIN_DESPACHAR') o.venc_sin_despachar += v;
+    else if (cat === 'FALLIDA') o.venc_fallida += v;
+    else if (cat === 'FALTA_DATO') o.venc_falta_dato += v;
+    else o.venc_demorado += v;
   });
+  const rows = Object.keys(acc).sort().map(function (k) { return acc[k]; });
   const res = { filas: rows, cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta } };
   cachePut_(key, res);
   return res;
@@ -723,6 +759,7 @@ function buildQueryCruce_(cfg) {
     "       THEN 'SUCURSAL' ELSE 'DOMICILIO' END                    AS tipo_entrega,",
     '  chk.fecha_entrega                                             AS fecha_entrega,',
     "  FORMAT_DATE('%Y-%m-%d', " + ref + ")                          AS fecha_real,",
+    '  os.dispatch_status                                            AS estado_despacho,',
     '  ANY_VALUE(chk.localidad)                                      AS localidad,',
     '  COUNT(*)                                                      AS n',
     'FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
@@ -735,7 +772,7 @@ function buildQueryCruce_(cfg) {
     "  AND NULLIF(chk.cp, '') IS NOT NULL",
     filtroTienda,
     filtroMedio,
-    'GROUP BY 1, 2, 3, 4, 5, 6'
+    'GROUP BY 1, 2, 3, 4, 5, 6, 7'
   ].filter(Boolean).join('\n');
 }
 
@@ -763,7 +800,7 @@ function getWebCruce(params) {
     const real = parseISO_(r.fecha_real);
     let estado;
     if (real && prom) estado = real.getTime() <= prom.getTime() ? 'A_TIEMPO' : 'TARDE';
-    else if (!real && prom && prom.getTime() < hoy.getTime()) estado = 'VENCIDA_SIN_ENTREGA';
+    else if (!real && prom && prom.getTime() < hoy.getTime()) estado = 'VENC_' + categoriaEstado_(r.estado_despacho);
     else estado = 'EN_PLAZO';
     const k = [e.canal || '(sin canal)', e.tipo, e.resultado, e.hipotesis_opuesto, estado].join('|');
     if (!acc[k]) acc[k] = { canal: e.canal || '(sin canal)', tipo: e.tipo, resultado: e.resultado,
@@ -808,6 +845,7 @@ function buildQueryCasos_(cfg) {
     '  chk.fecha_entrega                                             AS fecha_entrega,',
     '  os.delivery_mode                                              AS modo_erp,',
     '  os.tracking_number                                            AS tracking,',
+    '  os.dispatch_status                                            AS estado_despacho,',
     "  FORMAT_DATE('%Y-%m-%d', " + ref + ")                          AS fecha_real",
     'FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
     'JOIN `' + CONFIG.TABLA_LOGISTICA + '` os',
@@ -835,19 +873,20 @@ function getWebCasos(params) {
     const e = evaluarFila_(r, ref, altas, usaHabiles);
     const prom = parseFechaEntrega_(r.fecha_entrega);
     const real = parseISO_(r.fecha_real);
-    let estado = 'EN PLAZO', atraso = '';
+    let estado = 'EN PLAZO', atraso = '', catEstado = '';
     if (real && prom) {
       atraso = diffDays_(prom, real);
       estado = atraso <= 0 ? 'A TIEMPO' : 'TARDE';
     } else if (!real && prom && prom.getTime() < hoy.getTime()) {
       estado = 'VENCIDA SIN ENTREGA';
+      catEstado = NOMBRE_CATEGORIA_[categoriaEstado_(r.estado_despacho)];
       atraso = diffDays_(prom, hoy);
     }
     const motivos = [];
     if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') motivos.push('PROMESA MENOR AL CANALIZADOR');
     if (e.hipotesis_opuesto === 'SI') motivos.push('SLA OPUESTO');
     if (estado === 'TARDE') motivos.push('ENTREGA TARDE');
-    if (estado === 'VENCIDA SIN ENTREGA') motivos.push('VENCIDA SIN ENTREGA');
+    if (estado === 'VENCIDA SIN ENTREGA') motivos.push('VENCIDA SIN ENTREGA: ' + catEstado);
     if (!motivos.length) return;
     casos.push({
       id_venta: r.id_venta,
@@ -866,6 +905,8 @@ function getWebCasos(params) {
       hipotesis_sla_opuesto: e.hipotesis_opuesto,
       fecha_real: r.fecha_real || '',
       estado_real: estado,
+      estado_despacho_erp: r.estado_despacho || '',
+      situacion_vencida: catEstado,
       dias_atraso: atraso,
       tracking: r.tracking || '',
       motivo: motivos.join(' + ')
