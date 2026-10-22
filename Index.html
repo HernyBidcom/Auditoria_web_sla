@@ -307,6 +307,7 @@
         var body=document.getElementById('real-body');
         var filas=(dataReal&&dataReal.filas)||[];
         if(!filas.length){ body.innerHTML='<div class="block empty">Sin entregas para el período/courier elegido.</div>'; return; }
+        if(!filas.some(function(r){ return r.semana; })){ body.innerHTML='<div class="error-box">El servidor devolvió datos de una versión vieja de Code.gs (sin semana). Pegá el Code.gs actualizado y creá una versión nueva en Manage deployments.</div>'; return; }
         var t=sumaReal(filas), exig=t.envios-t.en_plazo_sin_entrega;
         var html='<div class="kpi-row">'+
           kpi('','Envíos',int(t.envios),dataReal.cfg.fecha_desde+' a '+dataReal.cfg.fecha_hasta)+

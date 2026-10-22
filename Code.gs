@@ -436,7 +436,7 @@ function prepararContextoWeb_(params, limite, agrupada) {
 // ---------------------------------------------------------------------------
 function cacheKey_(prefijo, params) {
   const p = params || {};
-  const raw = [prefijo, p.fecha_desde, p.fecha_hasta, p.tiendas_web, p.usar_dias_habiles, p.canal, 'fer1'].join('|');
+  const raw = [prefijo, p.fecha_desde, p.fecha_hasta, p.tiendas_web, p.usar_dias_habiles, p.canal, 'v3'].join('|');
   const dig = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw);
   return prefijo + '_' + Utilities.base64EncodeWebSafe(dig);
 }
