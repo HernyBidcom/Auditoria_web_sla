@@ -101,6 +101,7 @@
         <a data-tab="dashboard" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg><span class="label">Dashboard</span></a>
         <a data-tab="detalle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="label">Detalle</span></a>
         <a data-tab="hipotesis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="label">Hipótesis SLA opuesto</span></a>
+        <a data-tab="depositos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-8h6v8"/></svg><span class="label">Depósitos</span></a>
         <a data-tab="cruce"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg><span class="label">Cruce auditoría × real</span></a>
         <a data-tab="referencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span class="label">Referencias</span></a>
       </nav>
@@ -124,7 +125,7 @@
         <section id="dashboard" class="section active">
           <div class="section-header">
             <div class="section-title"><h1>Dashboard</h1><p>¿La fecha que prometemos se cumple? Entrega real por courier y, más abajo, diagnóstico contra el canalizador. Ventas web, sin preventas, modificadas ni canceladas.</p></div>
-            <div class="section-actions"><button id="btnCasos">⬇️ Casos a revisar (CSV)</button><button class="btn-secondary" id="btnDescargarReal">⬇️ CSV real vs prometido</button><button class="btn-secondary" id="btnDescargarResumen">⬇️ CSV diagnóstico</button></div>
+            <div class="section-actions"><button id="btnCasos">⬇️ Casos a revisar (CSV)</button><button class="btn-secondary" id="btnCasosCourier">⬇️ Entregas tardías del courier (CSV)</button><button class="btn-secondary" id="btnDescargarReal">⬇️ CSV real vs prometido</button><button class="btn-secondary" id="btnDescargarResumen">⬇️ CSV diagnóstico</button></div>
           </div>
           <div id="real-loading" class="loading hidden"><div class="spinner"></div><span>Comparando promesa contra entrega real…</span></div>
           <div id="real-body"></div>
@@ -163,6 +164,15 @@
           <div id="hip-body"></div>
         </section>
 
+        <section id="depositos" class="section">
+          <div class="section-header">
+            <div class="section-title"><h1>Depósitos</h1><p>Ventas web con promesa vencida que todavía no salieron del depósito (demorado, preparado, en preparación, en espera, modificar). Incluye todos los couriers salvo que filtres uno arriba.</p></div>
+            <div class="section-actions"><button class="btn-secondary" id="btnDescargarDep">⬇️ CSV depósitos</button></div>
+          </div>
+          <div id="dep-loading" class="loading hidden"><div class="spinner"></div><span>Calculando…</span></div>
+          <div id="dep-body"></div>
+        </section>
+
         <section id="cruce" class="section">
           <div class="section-header">
             <div class="section-title"><h1>Cruce auditoría × entrega real</h1><p>¿Las ventas con promesa menor al canalizador son las que llegan tarde?</p></div>
@@ -187,9 +197,9 @@
 
   <script>
     (function(){
-      const tabs=['dashboard','detalle','hipotesis','cruce','referencias'];
+      const tabs=['dashboard','detalle','hipotesis','depositos','cruce','referencias'];
       let tabActual='dashboard';
-      let dataDashboard=null, dataDetalle=[], dataReferencias=[], dataHip=null, dataReal=null, dataCruce=null;
+      let dataDashboard=null, dataDetalle=[], dataReferencias=[], dataHip=null, dataReal=null, dataCruce=null, dataDep=null;
 
       function int(v){ return (v||0).toLocaleString('es-AR'); }
       function pct(v){ if(!v && v!==0) return '0,0%'; return (v*100).toFixed(1).replace('.',',')+'%'; }
@@ -205,6 +215,7 @@
         if(t==='detalle' && dataDetalle.length===0) cargarDetalle();
         if(t==='hipotesis' && !dataHip) cargarHipotesis();
         if(t==='cruce' && !dataCruce) cargarCruce();
+        if(t==='depositos' && !dataDep) cargarDepositos();
         if(t==='referencias' && dataReferencias.length===0) cargarReferencias();
       }
       document.querySelectorAll('#nav a[data-tab]').forEach(function(a){ a.addEventListener('click',function(){ mostrarTab(a.dataset.tab); }); });
@@ -289,7 +300,7 @@
       document.getElementById('detCanal').addEventListener('change', renderDetalle);
 
 
-      var CAMPOS_REAL=['envios','con_entrega','a_tiempo','tarde_1d','tarde_2_3d','tarde_4d_mas','en_plazo_sin_entrega','suma_dif_dias','venc_courier','venc_demorado','venc_sin_despachar','venc_fallida','venc_falta_dato'];
+      var CAMPOS_REAL=['envios','con_entrega','a_tiempo','tarde_1d','tarde_2_3d','tarde_4d_mas','en_plazo_sin_entrega','suma_dif_dias','venc_courier','venc_otro','venc_sin_despachar','venc_fallida','venc_falta_dato'];
       function sumaReal(filas){
         var t={}; CAMPOS_REAL.forEach(function(k){ t[k]=0; });
         filas.forEach(function(r){ CAMPOS_REAL.forEach(function(k){ t[k]+=r[k]||0; }); });
@@ -305,7 +316,7 @@
         var dif=t.con_entrega?(t.suma_dif_dias/t.con_entrega).toFixed(1).replace('.',','):'-';
         return '<tr><td>'+esc(label1)+'</td><td>'+esc(label2)+'</td><td>'+int(t.envios)+'</td><td>'+int(t.con_entrega)+'</td><td>'+pct(pEnt)+'</td>'+
           '<td><span class="badge '+claseP(pCour)+'">'+pct(pCour)+'</span></td><td>'+int(t.tarde_1d)+'</td><td>'+int(t.tarde_2_3d)+'</td><td>'+int(t.tarde_4d_mas)+'</td>'+
-          '<td>'+int(t.venc_courier)+'</td><td>'+int(t.venc_fallida)+'</td><td>'+int(t.venc_demorado)+'</td><td>'+int(t.venc_sin_despachar)+'</td><td>'+int(t.venc_falta_dato)+'</td><td>'+dif+'</td></tr>';
+          '<td>'+int(t.venc_courier)+'</td><td>'+int(t.venc_fallida)+'</td><td>'+int(t.venc_otro)+'</td><td>'+int(t.venc_sin_despachar)+'</td><td>'+int(t.venc_falta_dato)+'</td><td>'+dif+'</td></tr>';
       }
       function renderReal(){
         var body=document.getElementById('real-body');
@@ -313,16 +324,16 @@
         if(!filas.length){ body.innerHTML='<div class="block empty">Sin entregas para el período/courier elegido.</div>'; return; }
         if(!filas.some(function(r){ return r.semana; }) || filas[0].venc_courier===undefined){ body.innerHTML='<div class="error-box">El servidor devolvió datos de una versión vieja de Code.gs. Pegá el Code.gs actualizado y creá una versión nueva en Manage deployments.</div>'; return; }
         var t=sumaReal(filas), exig=exigCourier(t);
-        var noAtrib=t.venc_sin_despachar+t.venc_demorado+t.venc_falta_dato;
+        var noAtrib=t.venc_sin_despachar+t.venc_otro+t.venc_falta_dato;
         var html='<div class="kpi-row">'+
           kpi('','Envíos',int(t.envios),dataReal.cfg.fecha_desde+' a '+dataReal.cfg.fecha_hasta)+
           kpi('','Con entrega registrada',int(t.con_entrega),pct(t.envios?t.con_entrega/t.envios:0)+' del total')+
           kpi('bad','A tiempo (sobre lo que tiene el courier)',pct(exig?t.a_tiempo/exig:0),'entregados + vencidos en tránsito o con entrega fallida')+
           kpi('good','A tiempo (solo entregados)',pct(t.con_entrega?t.a_tiempo/t.con_entrega:0),'optimista: ignora lo no entregado')+
           kpi('warn','Vencidas con el courier',int(t.venc_courier+t.venc_fallida),'en tránsito/ruta o entrega fallida')+
-          kpi('','Vencidas no atribuibles al courier',int(noAtrib),'sin despachar, demoradas o sin fecha del courier')+
+          kpi('','Vencidas no atribuibles al courier',int(noAtrib),'sin despachar (incl. demoradas), otro estado o sin fecha del courier')+
           '</div>';
-        var head='<thead><tr><th>__A__</th><th>__B__</th><th>Envíos</th><th>Con entrega</th><th>% a tiempo (entregados)</th><th>% a tiempo (courier)</th><th>Tarde 1 día</th><th>Tarde 2-3 días</th><th>Tarde 4+ días</th><th>Vencida en tránsito</th><th>Entrega fallida</th><th>Demorado / otro</th><th>Sin despachar (nuestro)</th><th>Falta fecha courier</th><th>Atraso prom. (días)</th></tr></thead>';
+        var head='<thead><tr><th>__A__</th><th>__B__</th><th>Envíos</th><th>Con entrega</th><th>% a tiempo (entregados)</th><th>% a tiempo (courier)</th><th>Tarde 1 día</th><th>Tarde 2-3 días</th><th>Tarde 4+ días</th><th>Vencida en tránsito</th><th>Entrega fallida</th><th>Otro estado</th><th>Sin despachar (nuestro)</th><th>Falta fecha courier</th><th>Atraso prom. (días)</th></tr></thead>';
         var porCM={}; filas.forEach(function(r){ var k=r.carrier+'|'+r.modo; (porCM[k]=porCM[k]||[]).push(r); });
         var claves=Object.keys(porCM).sort();
         html+='<div class="block"><h2>Por courier y modo de entrega</h2><div class="table-wrap"><table>'+head.replace('__A__','Courier').replace('__B__','Modo')+'<tbody>'+
@@ -341,7 +352,7 @@
             }).join('')+'</tr>';
           }).join('')+'</tbody></table></div></div>';
         html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)">'+
-          '<b>Cómo leerlo.</b> “% a tiempo (courier)” = envíos a tiempo ÷ (entregados + vencidos que están en tránsito/ruta o con entrega fallida). Las vencidas “sin despachar” (no salieron de nuestro depósito), “demorado / otro” y “falta fecha courier” (el ERP dice entregado pero el courier no informó fecha) se muestran aparte y no se cargan al courier. '+
+          '<b>Cómo leerlo.</b> “% a tiempo (courier)” = envíos a tiempo ÷ (entregados + vencidos que están en tránsito/ruta o con entrega fallida). Las vencidas “sin despachar” (no salieron de nuestro depósito: demorado, preparado, en preparación, en espera), “otro estado” y “falta fecha courier” (el ERP dice entregado pero el courier no informó fecha) se muestran aparte y no se cargan al courier. '+
           'En “A RETIRAR” se mide contra la llegada a sucursal. Entregar y Andreani empiezan a informarse el 9/9 y el 26/9; la última semana está en curso.</div>';
         body.innerHTML=html;
       }
@@ -353,6 +364,60 @@
         }, function(){ loading('real-loading',false); });
       }
 
+
+      function cargarDepositos(forzar){
+        loading('dep-loading',true);
+        setStatus('Calculando vencidas por depósito…');
+        var p=params(); if(forzar===true) p.forzar=true;
+        server('getWebDepositos', p, function(d){
+          dataDep=d; loading('dep-loading',false); renderDepositos();
+          setStatus('Depósitos listos.'+(d.cache?' (desde caché, 20 min)':''));
+        }, function(){ loading('dep-loading',false); });
+      }
+      function renderDepositos(){
+        var body=document.getElementById('dep-body');
+        var filas=(dataDep&&dataDep.filas)||[];
+        if(!filas.length){ body.innerHTML='<div class="block empty">Sin datos para el período elegido.</div>'; return; }
+        var estados=dataDep.estadosPredespacho||['DEMORADO','PREPARADO','EN PREPARACION','EN ESPERA','MODIFICAR'];
+        var deps={}; filas.forEach(function(r){ (deps[r.deposito]=deps[r.deposito]||[]).push(r); });
+        var nombres=Object.keys(deps).sort(function(a,b){
+          function v(n){ return deps[n].filter(function(r){return r.predespacho;}).reduce(function(s,r){return s+r.vencidas;},0); }
+          return v(b)-v(a); });
+        function agg(rs){
+          var t={ventas:0,vencidas:0,en_plazo:0,b13:0,b47:0,b815:0,b16:0,dias:0,porEstado:{}};
+          estados.forEach(function(e){ t.porEstado[e]={v:0,ep:0}; });
+          rs.forEach(function(r){ t.ventas+=r.ventas;
+            if(r.predespacho){ t.vencidas+=r.vencidas; t.en_plazo+=r.en_plazo; t.b13+=r.venc_1_3d; t.b47+=r.venc_4_7d; t.b815+=r.venc_8_15d; t.b16+=r.venc_16d_mas; t.dias+=r.suma_dias_venc;
+              if(t.porEstado[r.estado]){ t.porEstado[r.estado].v+=r.vencidas; t.porEstado[r.estado].ep+=r.en_plazo; } } });
+          return t;
+        }
+        var tot=agg(filas);
+        var maxV=Math.max.apply(null,nombres.map(function(n){ return agg(deps[n]).vencidas; }).concat([1]));
+        var html='<div class="kpi-row">'+
+          kpi('bad','Vencidas sin despachar',int(tot.vencidas),pct(tot.ventas?tot.vencidas/tot.ventas:0)+' de '+int(tot.ventas)+' ventas')+
+          kpi('warn','Sin despachar, aún en plazo',int(tot.en_plazo),'se vencen si no salen')+
+          kpi('','Atraso promedio (vencidas)',tot.vencidas?(tot.dias/tot.vencidas).toFixed(1).replace('.',',')+' días':'-','desde la fecha prometida')+
+          kpi('bad','Vencidas hace más de 15 días',int(tot.b16),pct(tot.vencidas?tot.b16/tot.vencidas:0)+' de las vencidas')+
+          '</div>';
+        // barras por depósito
+        html+='<div class="block"><h2>Vencidas sin despachar por depósito</h2>'+
+          nombres.map(function(n){ var t=agg(deps[n]); var w=Math.round(t.vencidas/maxV*100);
+            return '<div style="display:flex;align-items:center;gap:10px;margin:6px 0;font-size:12.5px"><div style="width:180px">'+esc(n)+'</div>'+
+              '<div style="flex:1;background:var(--muted);border-radius:4px;height:18px"><div style="width:'+w+'%;background:var(--crit);height:18px;border-radius:4px"></div></div>'+
+              '<div style="width:230px;text-align:right">'+int(t.vencidas)+' vencidas · '+pct(t.ventas?t.vencidas/t.ventas:0)+' de '+int(t.ventas)+'</div></div>'; }).join('')+'</div>';
+        // tabla por deposito x estado
+        var head='<thead><tr><th>Depósito</th><th>Ventas</th><th>Vencidas sin despachar</th><th>% de ventas</th>'+estados.map(function(e){ return '<th>'+esc(e.charAt(0)+e.slice(1).toLowerCase())+'</th>'; }).join('')+'<th>1-3 días</th><th>4-7 días</th><th>8-15 días</th><th>16+ días</th><th>Atraso prom.</th></tr></thead>';
+        function celdaEstado(c){ return '<td>'+int(c.v)+(c.ep?'<span style="color:var(--muted-foreground)"> (+'+int(c.ep)+' en plazo)</span>':'')+'</td>'; }
+        var rows=nombres.concat(['__TOTAL__']).map(function(n){
+          var t=n==='__TOTAL__'?tot:agg(deps[n]); var nom=n==='__TOTAL__'?'Total':n;
+          return '<tr'+(n==='__TOTAL__'?' style="font-weight:700"':'')+'><td>'+esc(nom)+'</td><td>'+int(t.ventas)+'</td><td>'+int(t.vencidas)+'</td><td>'+pct(t.ventas?t.vencidas/t.ventas:0)+'</td>'+
+            estados.map(function(e){ return celdaEstado(t.porEstado[e]); }).join('')+
+            '<td>'+int(t.b13)+'</td><td>'+int(t.b47)+'</td><td>'+int(t.b815)+'</td><td>'+int(t.b16)+'</td><td>'+(t.vencidas?(t.dias/t.vencidas).toFixed(1).replace('.',','):'-')+'</td></tr>'; }).join('');
+        html+='<div class="block"><h2>Por depósito y estado de preparación</h2><div class="table-wrap"><table>'+head+'<tbody>'+rows+'</tbody></table></div></div>';
+        html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)"><b>Cómo leerlo.</b> Cuenta ventas web sin entrega cuyo estado en el ERP todavía es de depósito. “Vencida” = la fecha prometida ya pasó. Los días son contra la fecha prometida, no contra la compra. Se excluyen preventas, modificadas y canceladas. Si en el ERP aparece un estado de depósito que no está en la lista, no se ve acá: avisame y lo sumo.</div>';
+        body.innerHTML=html;
+      }
+
       function cargarCruce(forzar){
         loading('cruce-loading',true);
         setStatus('Cruzando auditoría con entrega real…');
@@ -362,7 +427,7 @@
           setStatus('Cruce listo: '+int(d.total)+' ventas.'+(d.cache?' (desde caché, 20 min)':''));
         }, function(){ loading('cruce-loading',false); });
       }
-      var ESTADOS_CRUCE=['A_TIEMPO','TARDE','VENC_COURIER','VENC_FALLIDA','VENC_DEMORADO','VENC_SIN_DESPACHAR','VENC_FALTA_DATO','EN_PLAZO'];
+      var ESTADOS_CRUCE=['A_TIEMPO','TARDE','VENC_COURIER','VENC_FALLIDA','VENC_OTRO','VENC_SIN_DESPACHAR','VENC_FALTA_DATO','EN_PLAZO'];
       function sumEstados(filas){
         var t={n:0}; ESTADOS_CRUCE.forEach(function(k){ t[k]=0; });
         filas.forEach(function(r){ t[r.estado]=(t[r.estado]||0)+r.n; t.n+=r.n; });
@@ -370,13 +435,13 @@
       }
       function filaCruce(c1,c2,t){
         var exig=t.A_TIEMPO+t.TARDE+t.VENC_COURIER+t.VENC_FALLIDA, pc=exig?t.A_TIEMPO/exig:0;
-        return '<tr><td>'+esc(c1)+'</td><td>'+esc(c2)+'</td><td>'+int(t.n)+'</td><td>'+int(t.A_TIEMPO)+'</td><td>'+int(t.TARDE)+'</td><td>'+int(t.VENC_COURIER)+'</td><td>'+int(t.VENC_FALLIDA)+'</td><td>'+int(t.VENC_DEMORADO)+'</td><td>'+int(t.VENC_SIN_DESPACHAR)+'</td><td>'+int(t.VENC_FALTA_DATO)+'</td><td>'+int(t.EN_PLAZO)+'</td><td><span class="badge '+claseP(pc)+'">'+pct(pc)+'</span></td></tr>';
+        return '<tr><td>'+esc(c1)+'</td><td>'+esc(c2)+'</td><td>'+int(t.n)+'</td><td>'+int(t.A_TIEMPO)+'</td><td>'+int(t.TARDE)+'</td><td>'+int(t.VENC_COURIER)+'</td><td>'+int(t.VENC_FALLIDA)+'</td><td>'+int(t.VENC_OTRO)+'</td><td>'+int(t.VENC_SIN_DESPACHAR)+'</td><td>'+int(t.VENC_FALTA_DATO)+'</td><td>'+int(t.EN_PLAZO)+'</td><td><span class="badge '+claseP(pc)+'">'+pct(pc)+'</span></td></tr>';
       }
       function renderCruce(){
         var body=document.getElementById('cruce-body');
         var filas=(dataCruce&&dataCruce.filas)||[];
         if(!filas.length){ body.innerHTML='<div class="block empty">Sin datos para el período/courier elegido.</div>'; return; }
-        var head='<thead><tr><th>__A__</th><th>Resultado auditoría</th><th>Ventas</th><th>A tiempo</th><th>Tarde</th><th>Vencida en tránsito</th><th>Entrega fallida</th><th>Demorado / otro</th><th>Sin despachar (nuestro)</th><th>Falta fecha courier</th><th>En plazo</th><th>% a tiempo (courier)</th></tr></thead>';
+        var head='<thead><tr><th>__A__</th><th>Resultado auditoría</th><th>Ventas</th><th>A tiempo</th><th>Tarde</th><th>Vencida en tránsito</th><th>Entrega fallida</th><th>Otro estado</th><th>Sin despachar (nuestro)</th><th>Falta fecha courier</th><th>En plazo</th><th>% a tiempo (courier)</th></tr></thead>';
         function grupo(r){ return r.resultado==='OK'?'OK':(r.resultado==='PROMESA MENOR AL CANALIZADOR'?'PROMESA MENOR':'OTROS ('+r.resultado+')'); }
         var porC={}; filas.forEach(function(r){ var k=r.canal+'|'+grupo(r); (porC[k]=porC[k]||[]).push(r); });
         var claves=Object.keys(porC).sort();
@@ -462,15 +527,17 @@
 
       document.getElementById('btnCargar').addEventListener('click', function(){
         // Al cambiar periodo/filtros hay que descartar lo ya cargado en las otras pestañas
-        dataDetalle=[]; dataHip=null; dataReal=null; dataCruce=null; dataReferencias=dataReferencias;
+        dataDetalle=[]; dataHip=null; dataReal=null; dataCruce=null; dataDep=null; dataReferencias=dataReferencias;
         document.getElementById('hip-body').innerHTML='';
         document.getElementById('real-body').innerHTML='';
         document.getElementById('cruce-body').innerHTML='';
+        document.getElementById('dep-body').innerHTML='';
         document.querySelector('#tab-detalle tbody').innerHTML='';
         cargarDashboard(true);
         if(tabActual==='detalle') cargarDetalle();
         if(tabActual==='hipotesis') cargarHipotesis();
         if(tabActual==='cruce') cargarCruce(true);
+        if(tabActual==='depositos') cargarDepositos(true);
       });
       document.getElementById('btnDescargarResumen').addEventListener('click', function(){
         if(!dataDashboard){ setStatus('Primero cargá el dashboard',true); return; }
@@ -496,18 +563,26 @@
         if(!filas.length){ setStatus('No hay datos para descargar',true); return; }
         descargarCSV('cruce_auditoria_real.csv', Object.keys(filas[0]), filas);
       });
-      function descargarCasos(btn){
+      function descargarCasos(btn,alcance){
         var original=btn.textContent; btn.disabled=true; btn.textContent='Armando casos…';
-        setStatus('Armando listado de casos a revisar (puede tardar 1-2 min)…');
-        server('getWebCasos', params(), function(d){
+        setStatus('Armando listado (puede tardar 1-2 min)…');
+        var p=params(); p.alcance=alcance;
+        server('getWebCasos', p, function(d){
           btn.disabled=false; btn.textContent=original;
-          if(!d.casos.length){ setStatus('No hay casos a revisar en el período/courier elegido.'); return; }
-          descargarCSV('casos_a_revisar_'+document.getElementById('desde').value+'_'+document.getElementById('hasta').value+'.csv', Object.keys(d.casos[0]), d.casos);
-          setStatus('Descargados '+int(d.casos.length)+' casos a revisar de '+int(d.ventas)+' ventas.'+(d.truncado?' OJO: había '+int(d.total)+', se descargaron los primeros '+int(d.casos.length)+'. Acotá fechas o courier.':''));
+          if(!d.casos.length){ setStatus('No hay casos en el período/courier elegido.'); return; }
+          var nombre=(alcance==='courier'?'entregas_tardias_courier_':'casos_a_revisar_')+document.getElementById('desde').value+'_'+document.getElementById('hasta').value+'.csv';
+          descargarCSV(nombre, Object.keys(d.casos[0]), d.casos);
+          setStatus('Descargados '+int(d.casos.length)+' casos de '+int(d.ventas)+' ventas.'+(d.truncado?' OJO: había '+int(d.total)+', se descargaron los primeros '+int(d.casos.length)+'. Acotá fechas o courier.':''));
         }, function(){ btn.disabled=false; btn.textContent=original; });
       }
-      document.getElementById('btnCasos').addEventListener('click', function(){ descargarCasos(this); });
-      document.getElementById('btnCasos2').addEventListener('click', function(){ descargarCasos(this); });
+      document.getElementById('btnCasos').addEventListener('click', function(){ descargarCasos(this,'revisar'); });
+      document.getElementById('btnCasos2').addEventListener('click', function(){ descargarCasos(this,'revisar'); });
+      document.getElementById('btnCasosCourier').addEventListener('click', function(){ descargarCasos(this,'courier'); });
+      document.getElementById('btnDescargarDep').addEventListener('click', function(){
+        var filas=(dataDep&&dataDep.filas)||[];
+        if(!filas.length){ setStatus('No hay datos para descargar',true); return; }
+        descargarCSV('depositos_vencidas_sin_despachar.csv', Object.keys(filas[0]), filas);
+      });
       document.getElementById('btnDescargarRef').addEventListener('click', function(){
         if(!dataReferencias.length){ setStatus('Primero cargá referencias',true); return; }
         descargarCSV('referencia_canalizadores.csv', Object.keys(dataReferencias[0]), dataReferencias);

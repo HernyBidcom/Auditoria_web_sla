@@ -434,9 +434,11 @@ function prepararContextoWeb_(params, limite, agrupada) {
 // ---------------------------------------------------------------------------
 // Cache (resultados chicos del tablero, 20 min)
 // ---------------------------------------------------------------------------
+// Subir este valor cada vez que cambie la forma de los datos cacheados
+const CACHE_VER_ = 'v5';
 function cacheKey_(prefijo, params) {
   const p = params || {};
-  const raw = [prefijo, p.fecha_desde, p.fecha_hasta, p.tiendas_web, p.usar_dias_habiles, p.canal, 'v3'].join('|');
+  const raw = [prefijo, p.fecha_desde, p.fecha_hasta, p.tiendas_web, p.usar_dias_habiles, p.canal, CACHE_VER_].join('|');
   const dig = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw);
   return prefijo + '_' + Utilities.base64EncodeWebSafe(dig);
 }
@@ -640,23 +642,27 @@ function consultarBigQuery_(query, location) {
 // Real vs prometido: fecha prometida (CHK_Carrito.fecha_entrega) contra entrega efectiva
 // ---------------------------------------------------------------------------
 // Categoria del estado de despacho (ERP) para una venta con promesa vencida y sin entrega real:
-//  COURIER       = ya esta en manos del courier (despachado / en transito / en ruta)
-//  SIN_DESPACHAR = no salio del deposito (preparado / en preparacion / en espera / modificar)  -> atraso nuestro
+//  COURIER       = en manos del courier (despachado / en transito / en ruta / siniestro / gestionado)
+//  SIN_DESPACHAR = no salio del deposito: DEMORADO / PREPARADO / EN PREPARACION / EN ESPERA / MODIFICAR (atraso nuestro)
 //  FALLIDA       = intento de entrega fallido (no entregado / rebotado / retornando)
 //  FALTA_DATO    = el ERP dice entregado / disponible en sucursal pero el courier no informo fecha
-//  DEMORADO      = demorado (sin fecha de despacho) y cualquier estado no mapeado
-function categoriaEstado_(st) {
-  const x = String(st == null ? '' : st).toUpperCase().replace(/[ÁÀ]/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I')
+//  OTRO          = cualquier estado no mapeado (revisar si aparece alguno)
+const ESTADOS_PREDESPACHO_ = ['DEMORADO', 'PREPARADO', 'EN PREPARACION', 'EN ESPERA', 'MODIFICAR'];
+function normEstado_(st) {
+  return String(st == null ? '' : st).toUpperCase().replace(/[ÁÀ]/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I')
     .replace(/Ó/g, 'O').replace(/Ú/g, 'U').trim();
-  if (['DESPACHADO', 'EN TRANSITO', 'EN RUTA'].indexOf(x) >= 0) return 'COURIER';
-  if (['PREPARADO', 'EN PREPARACION', 'EN ESPERA', 'MODIFICAR'].indexOf(x) >= 0) return 'SIN_DESPACHAR';
+}
+function categoriaEstado_(st) {
+  const x = normEstado_(st);
+  if (['DESPACHADO', 'EN TRANSITO', 'EN RUTA', 'SINIESTRO', 'GESTIONADO'].indexOf(x) >= 0) return 'COURIER';
+  if (ESTADOS_PREDESPACHO_.indexOf(x) >= 0) return 'SIN_DESPACHAR';
   if (['NO ENTREGADO', 'REBOTADO', 'RETORNANDO'].indexOf(x) >= 0) return 'FALLIDA';
   if (['ENTREGADO', 'DISPONIBLE SUCURSAL'].indexOf(x) >= 0) return 'FALTA_DATO';
-  return 'DEMORADO';
+  return 'OTRO';
 }
 const NOMBRE_CATEGORIA_ = {
   COURIER: 'CON EL COURIER', SIN_DESPACHAR: 'SIN DESPACHAR (NUESTRO)', FALLIDA: 'ENTREGA FALLIDA',
-  FALTA_DATO: 'FALTA FECHA DEL COURIER', DEMORADO: 'DEMORADO / OTRO ESTADO'
+  FALTA_DATO: 'FALTA FECHA DEL COURIER', OTRO: 'OTRO ESTADO'
 };
 
 function buildQueryReal_(cfg) {
@@ -716,7 +722,7 @@ function getWebReal(params) {
       acc[k] = { carrier: r.carrier, modo: r.delivery_mode, mes: r.mes, semana: r.semana,
         envios: 0, con_entrega: 0, a_tiempo: 0, tarde_1d: 0, tarde_2_3d: 0, tarde_4d_mas: 0,
         en_plazo_sin_entrega: 0, suma_dif_dias: 0,
-        venc_courier: 0, venc_demorado: 0, venc_sin_despachar: 0, venc_fallida: 0, venc_falta_dato: 0 };
+        venc_courier: 0, venc_otro: 0, venc_sin_despachar: 0, venc_fallida: 0, venc_falta_dato: 0 };
     }
     const o = acc[k];
     ['envios', 'con_entrega', 'a_tiempo', 'tarde_1d', 'tarde_2_3d', 'tarde_4d_mas',
@@ -727,7 +733,7 @@ function getWebReal(params) {
     else if (cat === 'SIN_DESPACHAR') o.venc_sin_despachar += v;
     else if (cat === 'FALLIDA') o.venc_fallida += v;
     else if (cat === 'FALTA_DATO') o.venc_falta_dato += v;
-    else o.venc_demorado += v;
+    else o.venc_otro += v;
   });
   const rows = Object.keys(acc).sort().map(function (k) { return acc[k]; });
   const res = { filas: rows, cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta } };
@@ -846,6 +852,7 @@ function buildQueryCasos_(cfg) {
     '  os.delivery_mode                                              AS modo_erp,',
     '  os.tracking_number                                            AS tracking,',
     '  os.dispatch_status                                            AS estado_despacho,',
+    '  os.deposit_name                                               AS deposito,',
     "  FORMAT_DATE('%Y-%m-%d', " + ref + ")                          AS fecha_real",
     'FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
     'JOIN `' + CONFIG.TABLA_LOGISTICA + '` os',
@@ -873,20 +880,30 @@ function getWebCasos(params) {
     const e = evaluarFila_(r, ref, altas, usaHabiles);
     const prom = parseFechaEntrega_(r.fecha_entrega);
     const real = parseISO_(r.fecha_real);
-    let estado = 'EN PLAZO', atraso = '', catEstado = '';
+    let estado = 'EN PLAZO', atraso = '', catEstado = '', cat = '';
     if (real && prom) {
       atraso = diffDays_(prom, real);
       estado = atraso <= 0 ? 'A TIEMPO' : 'TARDE';
     } else if (!real && prom && prom.getTime() < hoy.getTime()) {
       estado = 'VENCIDA SIN ENTREGA';
-      catEstado = NOMBRE_CATEGORIA_[categoriaEstado_(r.estado_despacho)];
+      cat = categoriaEstado_(r.estado_despacho);
+      catEstado = NOMBRE_CATEGORIA_[cat];
       atraso = diffDays_(prom, hoy);
     }
+    // alcance 'revisar' (default): lo que hay que mirar de nuestro lado: promesa menor / SLA opuesto /
+    //   vencidas que NO salieron del deposito (demorado, preparado, en preparacion, en espera...) y estados no mapeados.
+    // alcance 'courier': entregas tardias y vencidas que estan en manos del courier (en transito, fallidas, sin fecha).
+    const alcance = String(params.alcance || 'revisar');
+    const vencida = estado === 'VENCIDA SIN ENTREGA';
     const motivos = [];
-    if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') motivos.push('PROMESA MENOR AL CANALIZADOR');
-    if (e.hipotesis_opuesto === 'SI') motivos.push('SLA OPUESTO');
-    if (estado === 'TARDE') motivos.push('ENTREGA TARDE');
-    if (estado === 'VENCIDA SIN ENTREGA') motivos.push('VENCIDA SIN ENTREGA: ' + catEstado);
+    if (alcance === 'courier') {
+      if (estado === 'TARDE') motivos.push('ENTREGA TARDE');
+      if (vencida && (cat === 'COURIER' || cat === 'FALLIDA' || cat === 'FALTA_DATO')) motivos.push('VENCIDA SIN ENTREGA: ' + catEstado);
+    } else {
+      if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') motivos.push('PROMESA MENOR AL CANALIZADOR');
+      if (e.hipotesis_opuesto === 'SI') motivos.push('SLA OPUESTO');
+      if (vencida && (cat === 'SIN_DESPACHAR' || cat === 'OTRO')) motivos.push('VENCIDA SIN DESPACHAR: ' + (normEstado_(r.estado_despacho) || 'SIN ESTADO'));
+    }
     if (!motivos.length) return;
     casos.push({
       id_venta: r.id_venta,
@@ -895,6 +912,7 @@ function getWebCasos(params) {
       courier: e.canal,
       tipo_entrega: e.tipo,
       modo_erp: r.modo_erp || '',
+      deposito: r.deposito || '',
       codigo_postal: e.cp,
       localidad: r.localidad || '',
       fecha_prometida: e.fecha_prometida,
@@ -918,7 +936,68 @@ function getWebCasos(params) {
     return (Number(b.dias_atraso) || 0) - (Number(a.dias_atraso) || 0);
   });
   const total = casos.length;
-  return { casos: casos.slice(0, MAX_CASOS_), total: total, truncado: total > MAX_CASOS_, ventas: rows.length };
+  return { casos: casos.slice(0, MAX_CASOS_), total: total, truncado: total > MAX_CASOS_, ventas: rows.length, alcance: String(params.alcance || 'revisar') };
+}
+
+// ---------------------------------------------------------------------------
+// Depositos: ventas web con promesa vencida que todavia no salieron del deposito, por deposito y estado
+// ---------------------------------------------------------------------------
+function buildQueryDepositos_(cfg) {
+  const desde = normFechaStr_(cfg.fecha_desde) || '2026-09-01';
+  const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
+  const c = String(cfg.canal || '').toUpperCase().replace(/[^A-Z]/g, '');
+  const filtroCarrier = c ? "  AND UPPER(carrier) = '" + c + "'" : '';
+  return [
+    'WITH b AS (',
+    "  SELECT COALESCE(deposit_name, '(sin deposito)') AS deposito, dispatch_status,",
+    '    promised_delivery_date AS prom,',
+    '    (delivered_at IS NULL AND arrived_for_pickup_at IS NULL) AS sin_entrega',
+    '  FROM `' + CONFIG.TABLA_LOGISTICA + '`',
+    "  WHERE channel = 'WEB'",
+    "    AND DATE(ordered_at) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    '    AND NOT is_preorder AND NOT is_modified AND NOT is_cancelled',
+    filtroCarrier,
+    ')',
+    'SELECT deposito, dispatch_status,',
+    '  COUNT(*) AS ventas,',
+    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE()) AS vencidas,',
+    '  COUNTIF(sin_entrega AND prom >= CURRENT_DATE()) AS en_plazo,',
+    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE() AND DATE_DIFF(CURRENT_DATE(), prom, DAY) BETWEEN 1 AND 3) AS venc_1_3d,',
+    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE() AND DATE_DIFF(CURRENT_DATE(), prom, DAY) BETWEEN 4 AND 7) AS venc_4_7d,',
+    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE() AND DATE_DIFF(CURRENT_DATE(), prom, DAY) BETWEEN 8 AND 15) AS venc_8_15d,',
+    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE() AND DATE_DIFF(CURRENT_DATE(), prom, DAY) >= 16) AS venc_16d_mas,',
+    '  IFNULL(SUM(IF(sin_entrega AND prom < CURRENT_DATE(), DATE_DIFF(CURRENT_DATE(), prom, DAY), 0)), 0) AS suma_dias_venc',
+    'FROM b',
+    'GROUP BY 1, 2',
+    'ORDER BY 1, 2'
+  ].filter(Boolean).join('\n');
+}
+
+function getWebDepositos(params) {
+  params = params || {};
+  const key = cacheKey_('dep', params);
+  if (!params.forzar) {
+    const cached = cacheGet_(key);
+    if (cached) { cached.cache = true; return cached; }
+  }
+  const cfg = buildWebCfg_(params);
+  const q = buildQueryDepositos_(cfg);
+  console.log(q);
+  const filas = consultarBigQuery_(q, CONFIG.LOCATION_LOGISTICA).map(function (r) {
+    const estado = normEstado_(r.dispatch_status) || 'SIN ESTADO';
+    return {
+      deposito: r.deposito, estado: estado,
+      predespacho: ESTADOS_PREDESPACHO_.indexOf(estado) >= 0,
+      ventas: Number(r.ventas || 0), vencidas: Number(r.vencidas || 0), en_plazo: Number(r.en_plazo || 0),
+      venc_1_3d: Number(r.venc_1_3d || 0), venc_4_7d: Number(r.venc_4_7d || 0),
+      venc_8_15d: Number(r.venc_8_15d || 0), venc_16d_mas: Number(r.venc_16d_mas || 0),
+      suma_dias_venc: Number(r.suma_dias_venc || 0)
+    };
+  });
+  const res = { filas: filas, estadosPredespacho: ESTADOS_PREDESPACHO_,
+    cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta } };
+  cachePut_(key, res);
+  return res;
 }
 
 // IDs de medio a auditar: todos, o solo el courier elegido (cfg.canal = OCA | ANDREANI | ENTREGAR)
