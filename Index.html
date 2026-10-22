@@ -166,7 +166,7 @@
 
         <section id="depositos" class="section">
           <div class="section-header">
-            <div class="section-title"><h1>Depósitos</h1><p>Ventas web con promesa vencida que todavía no salieron del depósito (demorado, preparado, en preparación, en espera, modificar). Incluye todos los couriers salvo que filtres uno arriba.</p></div>
+            <div class="section-title"><h1>Depósitos</h1><p>Ventas web con promesa vencida que todavía no salieron del depósito (preparado, en preparación, en espera, modificar). Se excluyen las demoradas (falta de stock) y las rebotadas (incidencia externa). Incluye todos los couriers salvo que filtres uno arriba.</p></div>
             <div class="section-actions"><button class="btn-secondary" id="btnDescargarDep">⬇️ CSV depósitos</button></div>
           </div>
           <div id="dep-loading" class="loading hidden"><div class="spinner"></div><span>Calculando…</span></div>
@@ -308,6 +308,12 @@
       }
       // Exigible al courier = lo que entregó (a tiempo o tarde) + lo vencido que está en sus manos (en tránsito o entrega fallida)
       function exigCourier(t){ return t.con_entrega+t.venc_courier+t.venc_fallida; }
+      function notaExcl(d,tipoCnt){
+        var e=(d&&d.excluidas)||{}; var partes=[];
+        if(e.DEMORADO) partes.push(int(e.DEMORADO)+' demoradas (falta de stock)');
+        if(e.REBOTADO) partes.push(int(e.REBOTADO)+' rebotadas (incidencia externa)');
+        return partes.length?'<div class="block" style="font-size:12px;color:var(--muted-foreground)"><b>Excluidas del análisis:</b> '+partes.join(' y ')+(tipoCnt?' ('+tipoCnt+')':'')+'.</div>':'';
+      }
       function claseP(p){ return p>=0.9?'badge-green':(p>=0.7?'badge-orange':'badge-red'); }
       function filaReal(label1,label2,t){
         var exig=exigCourier(t);
@@ -351,8 +357,9 @@
               var p=x.a_tiempo/ex; return '<td title="'+int(ex)+' exigibles de '+int(x.envios)+' envíos"><span class="badge '+claseP(p)+'">'+pct(p)+'</span></td>';
             }).join('')+'</tr>';
           }).join('')+'</tbody></table></div></div>';
+        html+=notaExcl(dataReal,'envíos');
         html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)">'+
-          '<b>Cómo leerlo.</b> “% a tiempo (courier)” = envíos a tiempo ÷ (entregados + vencidos que están en tránsito/ruta o con entrega fallida). Las vencidas “sin despachar” (no salieron de nuestro depósito: demorado, preparado, en preparación, en espera), “otro estado” y “falta fecha courier” (el ERP dice entregado pero el courier no informó fecha) se muestran aparte y no se cargan al courier. '+
+          '<b>Cómo leerlo.</b> “% a tiempo (courier)” = envíos a tiempo ÷ (entregados + vencidos que están en tránsito/ruta o con entrega fallida). Las vencidas “sin despachar” (no salieron de nuestro depósito: preparado, en preparación, en espera, modificar), “otro estado” y “falta fecha courier” (el ERP dice entregado pero el courier no informó fecha) se muestran aparte y no se cargan al courier. '+
           'En “A RETIRAR” se mide contra la llegada a sucursal. Entregar y Andreani empiezan a informarse el 9/9 y el 26/9; la última semana está en curso.</div>';
         body.innerHTML=html;
       }
@@ -378,7 +385,7 @@
         var body=document.getElementById('dep-body');
         var filas=(dataDep&&dataDep.filas)||[];
         if(!filas.length){ body.innerHTML='<div class="block empty">Sin datos para el período elegido.</div>'; return; }
-        var estados=dataDep.estadosPredespacho||['DEMORADO','PREPARADO','EN PREPARACION','EN ESPERA','MODIFICAR'];
+        var estados=dataDep.estadosPredespacho||['PREPARADO','EN PREPARACION','EN ESPERA','MODIFICAR'];
         var deps={}; filas.forEach(function(r){ (deps[r.deposito]=deps[r.deposito]||[]).push(r); });
         var nombres=Object.keys(deps).sort(function(a,b){
           function v(n){ return deps[n].filter(function(r){return r.predespacho;}).reduce(function(s,r){return s+r.vencidas;},0); }
@@ -414,6 +421,7 @@
             estados.map(function(e){ return celdaEstado(t.porEstado[e]); }).join('')+
             '<td>'+int(t.b13)+'</td><td>'+int(t.b47)+'</td><td>'+int(t.b815)+'</td><td>'+int(t.b16)+'</td><td>'+(t.vencidas?(t.dias/t.vencidas).toFixed(1).replace('.',','):'-')+'</td></tr>'; }).join('');
         html+='<div class="block"><h2>Por depósito y estado de preparación</h2><div class="table-wrap"><table>'+head+'<tbody>'+rows+'</tbody></table></div></div>';
+        html+=notaExcl(dataDep,'vencidas');
         html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)"><b>Cómo leerlo.</b> Cuenta ventas web sin entrega cuyo estado en el ERP todavía es de depósito. “Vencida” = la fecha prometida ya pasó. Los días son contra la fecha prometida, no contra la compra. Se excluyen preventas, modificadas y canceladas. Si en el ERP aparece un estado de depósito que no está en la lista, no se ve acá: avisame y lo sumo.</div>';
         body.innerHTML=html;
       }
@@ -450,6 +458,7 @@
         var hip=filas.filter(function(r){ return r.hipotesis==='SI'; });
         if(hip.length){ var th=sumEstados(hip);
           html+='<div class="block"><h2>Casos “SLA opuesto”</h2><div class="table-wrap"><table>'+head.replace('__A__','Segmento')+'<tbody>'+filaCruce('Hipótesis SLA opuesto','—',th)+'</tbody></table></div></div>'; }
+        html+=notaExcl(dataCruce,'ventas');
         html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)"><b>Cómo leerlo.</b> Si el % a tiempo de “PROMESA MENOR” es bastante peor que el de “OK”, la auditoría está detectando el problema real. Si ambos son parecidos, el atraso no se explica por el plazo del canalizador (operación del courier o promesa mal calculada en general). “% a tiempo (courier)” cuenta solo lo entregado y lo vencido que está en manos del courier (en tránsito o entrega fallida); lo que nunca salió del depósito o no tiene fecha del courier se muestra aparte. “En plazo” = promesa todavía no vencida y sin entrega. Se excluyen preventas, modificadas y canceladas.</div>';
         body.innerHTML=html;
       }
@@ -572,7 +581,8 @@
           if(!d.casos.length){ setStatus('No hay casos en el período/courier elegido.'); return; }
           var nombre=(alcance==='courier'?'entregas_tardias_courier_':'casos_a_revisar_')+document.getElementById('desde').value+'_'+document.getElementById('hasta').value+'.csv';
           descargarCSV(nombre, Object.keys(d.casos[0]), d.casos);
-          setStatus('Descargados '+int(d.casos.length)+' casos de '+int(d.ventas)+' ventas.'+(d.truncado?' OJO: había '+int(d.total)+', se descargaron los primeros '+int(d.casos.length)+'. Acotá fechas o courier.':''));
+          var ex=d.excluidas||{}; var nEx=(ex.DEMORADO||0)+(ex.REBOTADO||0);
+          setStatus('Descargados '+int(d.casos.length)+' casos de '+int(d.ventas)+' ventas'+(nEx?' (se excluyeron '+int(nEx)+' demoradas/rebotadas)':'')+'.'+(d.truncado?' OJO: había '+int(d.total)+', se descargaron los primeros '+int(d.casos.length)+'. Acotá fechas o courier.':''));
         }, function(){ btn.disabled=false; btn.textContent=original; });
       }
       document.getElementById('btnCasos').addEventListener('click', function(){ descargarCasos(this,'revisar'); });

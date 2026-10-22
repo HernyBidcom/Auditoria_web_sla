@@ -435,7 +435,7 @@ function prepararContextoWeb_(params, limite, agrupada) {
 // Cache (resultados chicos del tablero, 20 min)
 // ---------------------------------------------------------------------------
 // Subir este valor cada vez que cambie la forma de los datos cacheados
-const CACHE_VER_ = 'v5';
+const CACHE_VER_ = 'v6';
 function cacheKey_(prefijo, params) {
   const p = params || {};
   const raw = [prefijo, p.fecha_desde, p.fecha_hasta, p.tiendas_web, p.usar_dias_habiles, p.canal, CACHE_VER_].join('|');
@@ -643,11 +643,18 @@ function consultarBigQuery_(query, location) {
 // ---------------------------------------------------------------------------
 // Categoria del estado de despacho (ERP) para una venta con promesa vencida y sin entrega real:
 //  COURIER       = en manos del courier (despachado / en transito / en ruta / siniestro / gestionado)
-//  SIN_DESPACHAR = no salio del deposito: DEMORADO / PREPARADO / EN PREPARACION / EN ESPERA / MODIFICAR (atraso nuestro)
-//  FALLIDA       = intento de entrega fallido (no entregado / rebotado / retornando)
+//  SIN_DESPACHAR = no salio del deposito: PREPARADO / EN PREPARACION / EN ESPERA / MODIFICAR (atraso nuestro)
+//  FALLIDA       = intento de entrega fallido (no entregado / retornando)
 //  FALTA_DATO    = el ERP dice entregado / disponible en sucursal pero el courier no informo fecha
 //  OTRO          = cualquier estado no mapeado (revisar si aparece alguno)
-const ESTADOS_PREDESPACHO_ = ['DEMORADO', 'PREPARADO', 'EN PREPARACION', 'EN ESPERA', 'MODIFICAR'];
+const ESTADOS_PREDESPACHO_ = ['PREPARADO', 'EN PREPARACION', 'EN ESPERA', 'MODIFICAR'];
+// Excluidos del analisis: DEMORADO (falta de stock) y REBOTADO (incidencia externa)
+const ESTADOS_EXCLUIDOS_ = ['DEMORADO', 'REBOTADO'];
+function esExcluido_(st) { return ESTADOS_EXCLUIDOS_.indexOf(normEstado_(st)) >= 0; }
+function sumaExcluida_(acc, st, n) {
+  const k = normEstado_(st);
+  acc[k] = (acc[k] || 0) + n;
+}
 function normEstado_(st) {
   return String(st == null ? '' : st).toUpperCase().replace(/[ÁÀ]/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I')
     .replace(/Ó/g, 'O').replace(/Ú/g, 'U').trim();
@@ -656,7 +663,7 @@ function categoriaEstado_(st) {
   const x = normEstado_(st);
   if (['DESPACHADO', 'EN TRANSITO', 'EN RUTA', 'SINIESTRO', 'GESTIONADO'].indexOf(x) >= 0) return 'COURIER';
   if (ESTADOS_PREDESPACHO_.indexOf(x) >= 0) return 'SIN_DESPACHAR';
-  if (['NO ENTREGADO', 'REBOTADO', 'RETORNANDO'].indexOf(x) >= 0) return 'FALLIDA';
+  if (['NO ENTREGADO', 'RETORNANDO'].indexOf(x) >= 0) return 'FALLIDA';
   if (['ENTREGADO', 'DISPONIBLE SUCURSAL'].indexOf(x) >= 0) return 'FALTA_DATO';
   return 'OTRO';
 }
@@ -716,7 +723,9 @@ function getWebReal(params) {
   const query = buildQueryReal_(cfg);
   console.log(query);
   const acc = {};
+  const excluidas = {};
   consultarBigQuery_(query, CONFIG.LOCATION_LOGISTICA).forEach(function (r) {
+    if (esExcluido_(r.dispatch_status)) { sumaExcluida_(excluidas, r.dispatch_status, Number(r.envios || 0)); return; }
     const k = [r.carrier, r.delivery_mode, r.mes, r.semana].join('|');
     if (!acc[k]) {
       acc[k] = { carrier: r.carrier, modo: r.delivery_mode, mes: r.mes, semana: r.semana,
@@ -736,7 +745,7 @@ function getWebReal(params) {
     else o.venc_otro += v;
   });
   const rows = Object.keys(acc).sort().map(function (k) { return acc[k]; });
-  const res = { filas: rows, cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta } };
+  const res = { filas: rows, excluidas: excluidas, cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta } };
   cachePut_(key, res);
   return res;
 }
@@ -798,9 +807,11 @@ function getWebCruce(params) {
   const rows = consultarBigQuery_(query, CONFIG.LOCATION_LOGISTICA);
   const hoy = parseISO_(fmtISO_(new Date()));
   const acc = {};
+  const excluidas = {};
   let total = 0;
   rows.forEach(function (r) {
     const n = Number(r.n || 1);
+    if (esExcluido_(r.estado_despacho)) { sumaExcluida_(excluidas, r.estado_despacho, n); return; }
     const e = evaluarFila_(r, ref, altas, usaHabiles);
     const prom = parseFechaEntrega_(r.fecha_entrega);
     const real = parseISO_(r.fecha_real);
@@ -816,6 +827,7 @@ function getWebCruce(params) {
   });
   const res = {
     total: total,
+    excluidas: excluidas,
     filas: Object.keys(acc).map(function (k) { return acc[k]; }),
     cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta }
   };
@@ -876,7 +888,9 @@ function getWebCasos(params) {
   const rows = consultarBigQuery_(buildQueryCasos_(cfg), CONFIG.LOCATION_LOGISTICA);
   const hoy = parseISO_(fmtISO_(new Date()));
   const casos = [];
+  const excluidas = {};
   rows.forEach(function (r) {
+    if (esExcluido_(r.estado_despacho)) { sumaExcluida_(excluidas, r.estado_despacho, 1); return; }
     const e = evaluarFila_(r, ref, altas, usaHabiles);
     const prom = parseFechaEntrega_(r.fecha_entrega);
     const real = parseISO_(r.fecha_real);
@@ -936,7 +950,7 @@ function getWebCasos(params) {
     return (Number(b.dias_atraso) || 0) - (Number(a.dias_atraso) || 0);
   });
   const total = casos.length;
-  return { casos: casos.slice(0, MAX_CASOS_), total: total, truncado: total > MAX_CASOS_, ventas: rows.length, alcance: String(params.alcance || 'revisar') };
+  return { casos: casos.slice(0, MAX_CASOS_), total: total, truncado: total > MAX_CASOS_, ventas: rows.length, excluidas: excluidas, alcance: String(params.alcance || 'revisar') };
 }
 
 // ---------------------------------------------------------------------------
@@ -983,18 +997,21 @@ function getWebDepositos(params) {
   const cfg = buildWebCfg_(params);
   const q = buildQueryDepositos_(cfg);
   console.log(q);
-  const filas = consultarBigQuery_(q, CONFIG.LOCATION_LOGISTICA).map(function (r) {
+  const excluidas = {};
+  const filas = [];
+  consultarBigQuery_(q, CONFIG.LOCATION_LOGISTICA).forEach(function (r) {
     const estado = normEstado_(r.dispatch_status) || 'SIN ESTADO';
-    return {
+    if (esExcluido_(estado)) { sumaExcluida_(excluidas, estado, Number(r.vencidas || 0)); return; }
+    filas.push({
       deposito: r.deposito, estado: estado,
       predespacho: ESTADOS_PREDESPACHO_.indexOf(estado) >= 0,
       ventas: Number(r.ventas || 0), vencidas: Number(r.vencidas || 0), en_plazo: Number(r.en_plazo || 0),
       venc_1_3d: Number(r.venc_1_3d || 0), venc_4_7d: Number(r.venc_4_7d || 0),
       venc_8_15d: Number(r.venc_8_15d || 0), venc_16d_mas: Number(r.venc_16d_mas || 0),
       suma_dias_venc: Number(r.suma_dias_venc || 0)
-    };
+    });
   });
-  const res = { filas: filas, estadosPredespacho: ESTADOS_PREDESPACHO_,
+  const res = { filas: filas, excluidas: excluidas, estadosPredespacho: ESTADOS_PREDESPACHO_,
     cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta } };
   cachePut_(key, res);
   return res;
