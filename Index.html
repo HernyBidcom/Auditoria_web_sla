@@ -113,6 +113,7 @@
           <div class="field"><label for="desde">Desde</label><input type="date" id="desde" value="2026-09-01"></div>
           <div class="field"><label for="hasta">Hasta</label><input type="date" id="hasta" value="2026-09-30"></div>
           <div class="field"><label for="tiendas">Tiendas</label><input type="text" id="tiendas" value="gadnic,bidcom" style="width:110px"></div>
+          <div class="field"><label for="canal">Courier</label><select id="canal"><option value="">Todos</option><option value="OCA">OCA</option><option value="ANDREANI">Andreani</option><option value="ENTREGAR">Entregar</option></select></div>
           <div class="field"><label for="habiles">Hábiles</label><select id="habiles"><option value="SI">Sí</option><option value="NO">No</option></select></div>
           <button id="btnCargar">Cargar</button>
         </div>
@@ -194,7 +195,7 @@
       }
       document.querySelectorAll('#nav a[data-tab]').forEach(function(a){ a.addEventListener('click',function(){ mostrarTab(a.dataset.tab); }); });
 
-      function params(){ return { fecha_desde:document.getElementById('desde').value, fecha_hasta:document.getElementById('hasta').value, tiendas_web:document.getElementById('tiendas').value, usar_dias_habiles:document.getElementById('habiles').value, limite: tabActual==='detalle'?'5000':'50000' }; }
+      function params(){ return { fecha_desde:document.getElementById('desde').value, fecha_hasta:document.getElementById('hasta').value, tiendas_web:document.getElementById('tiendas').value, canal:document.getElementById('canal').value, usar_dias_habiles:document.getElementById('habiles').value, limite: tabActual==='detalle'?'5000':'50000' }; }
 
       function server(fn,args,ok,ko){
         // Los handlers van ANTES de llamar a la funcion: google.script.run.fn() no devuelve nada

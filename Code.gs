@@ -372,7 +372,8 @@ function buildWebCfg_(params) {
     usar_dias_habiles: String(p.usar_dias_habiles || 'SI').toUpperCase().startsWith('SI') ? 'SI' : 'NO',
     alta_OCA: normFechaStr_(p.alta_OCA) || '2020-01-01',
     alta_ANDREANI: normFechaStr_(p.alta_ANDREANI) || '',
-    alta_ENTREGAR: normFechaStr_(p.alta_ENTREGAR) || ''
+    alta_ENTREGAR: normFechaStr_(p.alta_ENTREGAR) || '',
+    canal: String(p.canal || '').toUpperCase()
   };
 }
 
@@ -417,7 +418,7 @@ function prepararContextoWeb_(params, limite, agrupada) {
 // ---------------------------------------------------------------------------
 function cacheKey_(prefijo, params) {
   const p = params || {};
-  const raw = [prefijo, p.fecha_desde, p.fecha_hasta, p.tiendas_web, p.usar_dias_habiles].join('|');
+  const raw = [prefijo, p.fecha_desde, p.fecha_hasta, p.tiendas_web, p.usar_dias_habiles, p.canal, 'fer1'].join('|');
   const dig = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw);
   return prefijo + '_' + Utilities.base64EncodeWebSafe(dig);
 }
@@ -615,6 +616,15 @@ function consultarBigQuery_(query, location) {
   });
 }
 
+// IDs de medio a auditar: todos, o solo el courier elegido (cfg.canal = OCA | ANDREANI | ENTREGAR)
+function idsMedio_(cfg) {
+  const c = String((cfg && cfg.canal) || '').toUpperCase();
+  const todos = Object.keys(CONFIG.MEDIOS);
+  if (!c) return todos;
+  const sel = todos.filter(function (id) { return CONFIG.MEDIOS[id] === c; });
+  return sel.length ? sel : todos;
+}
+
 function buildQuery_(cfg, limite) {
   const desde = normFechaStr_(cfg.fecha_desde) || '2026-01-01';
   const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
@@ -625,7 +635,7 @@ function buildQuery_(cfg, limite) {
         .map(function (t) { return "'" + t.trim().toLowerCase() + "'"; }).join(', ') + ')'
     : '';
 
-  const filtroMedio = '  AND chk.medio_envio_id IN (' + Object.keys(CONFIG.MEDIOS).join(', ') + ')';
+  const filtroMedio = '  AND chk.medio_envio_id IN (' + idsMedio_(cfg).join(', ') + ')';
 
   return [
     'SELECT',
@@ -662,7 +672,7 @@ function buildQueryAgrupada_(cfg) {
     ? '  AND LOWER(chk.tienda) IN (' + cfg.tiendas_web.split(',')
         .map(function (t) { return "'" + t.trim().toLowerCase().replace(/'/g, '') + "'"; }).join(', ') + ')'
     : '';
-  const filtroMedio = '  AND chk.medio_envio_id IN (' + Object.keys(CONFIG.MEDIOS).join(', ') + ')';
+  const filtroMedio = '  AND chk.medio_envio_id IN (' + idsMedio_(cfg).join(', ') + ')';
 
   return [
     'SELECT',
@@ -786,13 +796,23 @@ function addDays_(d, n) {
   x.setDate(x.getDate() + n);
   return x;
 }
+// Feriados nacionales Argentina 2026 (dias que NO cuentan como habiles).
+// Verificar contra el calendario oficial. Los "puentes turisticos" (23/03, 10/07, 07/12) son
+// dias no laborables optativos: estan comentados; descomentalos si el courier no opera esos dias.
+const FERIADOS_ = {
+  '2026-01-01': 1, '2026-02-16': 1, '2026-02-17': 1, '2026-03-24': 1, '2026-04-02': 1, '2026-04-03': 1,
+  '2026-05-01': 1, '2026-05-25': 1, '2026-06-15': 1, '2026-06-20': 1, '2026-07-09': 1, '2026-08-17': 1,
+  '2026-10-12': 1, '2026-11-23': 1, '2026-12-08': 1, '2026-12-25': 1
+  // , '2026-03-23': 1, '2026-07-10': 1, '2026-12-07': 1
+};
+function esFeriado_(d) { return FERIADOS_[fmtISO_(d)] === 1; }
 function addBusinessDays_(d, n) {
   let x = new Date(d.getTime());
   let added = 0;
   while (added < n) {
     x = addDays_(x, 1);
     const w = x.getDay();
-    if (w !== 0 && w !== 6) added++;
+    if (w !== 0 && w !== 6 && !esFeriado_(x)) added++;
   }
   return x;
 }
