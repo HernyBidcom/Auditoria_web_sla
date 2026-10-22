@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --primary: #2a2b64; --primary-foreground: #edf1ff;
+      --foreground: #09090b; --background: #ffffff;
+      --muted: #f4f4f5; --muted-foreground: #71717b;
+      --border: #e4e4e7; --radius: 8px; --radius-sm: 6px;
+      --ok: #00b56b; --warn: #ff8c00; --crit: #d32f2f;
+      --font-ui: 'Geist','Inter','Google Sans','Roboto',Arial,sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: var(--font-ui); font-size: 13px; color: var(--foreground); background: #fff; padding: 14px; }
+    h1 { font-size: 16px; font-weight: 800; margin: 0 0 4px; }
+    .sub { font-size: 11px; color: var(--muted-foreground); margin-bottom: 14px; }
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 11px; color: var(--muted-foreground); margin-bottom: 3px; }
+    .field input, .field select { width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 8px; font-family: inherit; font-size: 12.5px; }
+    button { width: 100%; border: none; border-radius: var(--radius); padding: 9px; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; background: var(--primary); color: var(--primary-foreground); margin-top: 4px; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .kpi { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin-top: 12px; background: var(--muted); }
+    .kpi .label { font-size: 11px; color: var(--muted-foreground); }
+    .kpi .value { font-size: 22px; font-weight: 800; margin: 4px 0; font-variant-numeric: tabular-nums; }
+    .good { color: var(--ok); }
+    .bad { color: var(--crit); }
+    .warn { color: var(--warn); }
+    .block { margin-top: 16px; }
+    .block h2 { font-size: 13px; font-weight: 700; margin: 0 0 8px; }
+    .table-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+    th, td { padding: 6px 7px; text-align: center; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+    th { position: sticky; top: 0; background: var(--muted); color: var(--muted-foreground); font-weight: 600; }
+    td:first-child, th:first-child { text-align: left; }
+    .error { background: rgba(211,47,47,.12); color: var(--crit); border: 1px solid var(--crit); padding: 8px; border-radius: var(--radius-sm); font-size: 12px; margin-top: 10px; }
+    .hint { font-size: 10.5px; color: var(--muted-foreground); margin-top: 8px; }
+    #debug { margin-top: 12px; font-size: 10.5px; color: var(--muted-foreground); word-break: break-all; }
+    .badge { display: inline-block; padding: 2px 6px; border-radius: 999px; font-size: 10px; font-weight: 600; }
+    .badge-green { background: rgba(0,181,107,.12); color: var(--ok); }
+    .badge-red { background: rgba(211,47,47,.12); color: var(--crit); }
+    .badge-orange { background: rgba(255,140,0,.12); color: var(--warn); }
+    .badge-gray { background: var(--muted); color: var(--muted-foreground); }
+    .btn-csv { background: #fff; color: var(--foreground); border: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <h1>Auditoría Web</h1>
+  <div class="sub">Promesas vs plazo de canalizadores</div>
+
+  <div class="field"><label for="desde">Desde</label><input type="date" id="desde" value="2026-09-01"></div>
+  <div class="field"><label for="hasta">Hasta</label><input type="date" id="hasta" value="2026-09-30"></div>
+  <div class="field"><label for="tiendas">Tiendas</label><input type="text" id="tiendas" value="gadnic,bidcom"></div>
+  <div class="field"><label for="habiles">Días hábiles</label><select id="habiles"><option value="SI">Sí</option><option value="NO">No</option></select></div>
+  <button id="btnCargar">Cargar</button>
+
+  <div id="status"></div>
+  <div id="debug"></div>
+
+  <div id="dash" style="display:none">
+    <div class="kpi"><div class="label">Total ventas</div><div class="value" id="kpiTotal">—</div></div>
+    <div class="kpi"><div class="label">Promesas OK</div><div class="value good" id="kpiOk">—</div></div>
+    <div class="kpi"><div class="label">Promesas menores</div><div class="value bad" id="kpiMen">—</div></div>
+    <div class="kpi"><div class="label">Hipótesis SLA opuesto</div><div class="value warn" id="kpiHip">—</div></div>
+
+    <div class="block">
+      <h2>Por canalizador</h2>
+      <div class="table-wrap"><table id="tabCanal"><thead><tr><th>Canal</th><th>Total</th><th>Men</th><th>%</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="block">
+      <h2>Top 10 CPs con problemas</h2>
+      <div class="table-wrap"><table id="tabCP"><thead><tr><th>CP</th><th>Localidad</th><th>Cant</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <button class="btn-csv" id="btnCSV">⬇️ Descargar CSV resumen</button>
+    <div class="hint">El detalle completo sigue disponible en la hoja Auditoria Web.</div>
+  </div>
+
+  <script>
+    (function(){
+      let data = null;
+      console.log('Sidebar cargado');
+      var debugEl = document.getElementById('debug');
+      function log(msg){ console.log(msg); if(debugEl) debugEl.innerHTML += '<div>'+String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>'; }
+      function int(v){ return (v||0).toLocaleString('es-AR'); }
+      function pct(v){ if(!v && v!==0) return '0,0%'; return (v*100).toFixed(1).replace('.',',')+'%'; }
+      function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      function setStatus(msg, err){ var s=document.getElementById('status'); s.textContent=msg||''; s.className=err?'error':''; }
+      function params(){ return { fecha_desde:document.getElementById('desde').value, fecha_hasta:document.getElementById('hasta').value, tiendas_web:document.getElementById('tiendas').value, usar_dias_habiles:document.getElementById('habiles').value, limite:'50000' }; }
+      function call(fn,args,ok,ko){
+        log('Llamando a '+fn+'...');
+        google.script.run[fn](args)
+          .withSuccessHandler(function(d){ log('Respuesta de '+fn); try { ok(d); } catch(err){ setStatus('Error procesando: '+err.message,true); log('Error ok: '+err.message); } })
+          .withFailureHandler(function(e){ log('Error en '+fn+': '+(e.message||JSON.stringify(e))); setStatus('Error: '+(e.message||'desconocido'),true); if(ko) ko(e); });
+      }
+
+      try {
+        log('Ping inicial...');
+        call('webPing', {}, function(r){ log('Ping OK '+JSON.stringify(r)); });
+      } catch(e) { log('Excepcion ping: '+e.message); }
+
+      document.getElementById('btnCargar').addEventListener('click', function(){
+        log('Click Cargar');
+        var b=document.getElementById('btnCargar'); b.disabled=true; b.textContent='Cargando...';
+        setStatus('Consultando BigQuery...');
+        var p=params(); log('Params: '+JSON.stringify(p));
+        var to=setTimeout(function(){ b.disabled=false; b.textContent='Cargar'; setStatus('La consulta tardo mas de 30s. Intenta un rango mas corto.',true); }, 30000);
+        call('getWebDashboard', p, function(d){
+          clearTimeout(to);
+          data=d;
+          log('Dashboard: total='+d.total);
+          document.getElementById('dash').style.display='block';
+          document.getElementById('kpiTotal').textContent=int(d.total);
+          document.getElementById('kpiOk').textContent=int(d.ok);
+          document.getElementById('kpiMen').textContent=int(d.menores);
+          document.getElementById('kpiHip').textContent=int(d.hipotesis);
+          document.querySelector('#tabCanal tbody').innerHTML = (d.porCanal||[]).map(function(c){
+            return '<tr><td>'+esc(c.canal)+'</td><td>'+int(c.total)+'</td><td>'+int(c.menores)+'</td><td>'+pct(c.total?c.menores/c.total:0)+'</td></tr>';
+          }).join('') || '<tr><td colspan="4" style="text-align:center">Sin datos</td></tr>';
+          document.querySelector('#tabCP tbody').innerHTML = (d.topCPs||[]).slice(0,10).map(function(c){
+            return '<tr><td>'+esc(c.cp)+'</td><td>'+esc(c.localidad)+'</td><td>'+int(c.menores)+'</td></tr>';
+          }).join('') || '<tr><td colspan="3" style="text-align:center">Sin datos</td></tr>';
+          b.disabled=false; b.textContent='Cargar';
+          setStatus('Listo. '+int(d.total)+' ventas.');
+        }, function(){ clearTimeout(to); b.disabled=false; b.textContent='Cargar'; });
+      });
+
+      document.getElementById('btnCSV').addEventListener('click', function(){
+        if(!data){ setStatus('Primero cargá el dashboard',true); return; }
+        var rows=(data.porCanal||[]).map(function(c){ return { canalizador:c.canal, total:c.total, ok:c.ok, menores:c.menores, hipotesis:c.hipotesis }; });
+        var sep=';';
+        var lines=[['canalizador','total','ok','menores','hipotesis'].join(sep)];
+        rows.forEach(function(r){ lines.push(['"'+String(r.canalizador)+'"', r.total, r.ok, r.menores, r.hipotesis].join(sep)); });
+        var blob=new Blob(['\uFEFF'+lines.join('\n')], {type:'text/csv;charset=utf-8'});
+        var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='resumen_auditoria_web.csv'; a.click();
+      });
+
+      log('Inicializado');
+    })();
+  </script>
+</body>
+</html>

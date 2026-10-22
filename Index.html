@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auditoría Web — Promesas vs Canalizadores</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --primary:#2a2b64; --primary-foreground:#edf1ff; --foreground:#09090b; --background:#ffffff;
+      --muted:#f4f4f5; --muted-foreground:#71717b; --border:#e4e4e7; --input:#e4e4e7;
+      --ok:#00b56b; --warn:#ff8c00; --crit:#d32f2f; --info:#2481ff;
+      --radius:8px; --radius-sm:6px;
+      --shadow:0 1px 2px rgba(9,9,11,.04); --shadow-lg:0 4px 14px rgba(9,9,21,.12);
+      --font-ui:'Geist','Inter','Google Sans','Roboto',Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;font-family:var(--font-ui);-webkit-font-smoothing:antialiased;color:var(--foreground);background:#fafafa}
+    body{background-attachment:fixed;background-image:radial-gradient(ellipse 1100px 750px at 0% 0%,rgba(42,43,100,.28),transparent 70%),radial-gradient(ellipse 900px 600px at 100% 0%,rgba(36,129,255,.22),transparent 70%),radial-gradient(ellipse 900px 700px at 100% 100%,rgba(214,28,193,.16),transparent 70%),radial-gradient(ellipse 1100px 800px at 0% 100%,rgba(29,197,174,.20),transparent 70%)}
+    #shell{display:flex;height:100vh;overflow:hidden}
+    #sidebar{width:236px;flex:0 0 236px;background:rgba(250,250,250,.86);backdrop-filter:blur(20px);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 14px}
+    .brand{display:flex;align-items:center;gap:10px;padding:4px 6px 18px}
+    .brand-logo{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:700;flex:0 0 28px}
+    .brand-title{font-size:15px;font-weight:700;letter-spacing:-.01em}
+    .brand-sub{font-size:11px;color:var(--muted-foreground)}
+    #nav{flex:1}
+    #nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--radius);color:var(--foreground);text-decoration:none;font-size:13px;font-weight:500;cursor:pointer}
+    #nav a:hover{background:rgba(0,0,0,.04)}
+    #nav a.active{background:#4f46e5;color:#fff}
+    #nav a svg{width:18px;height:18px;flex:0 0 18px}
+    .nav-group{font-size:10.5px;text-transform:uppercase;color:var(--muted-foreground);font-weight:600;letter-spacing:.04em;margin:14px 0 6px 8px}
+    .sidebar-foot{font-size:10.5px;color:var(--muted-foreground);padding:12px 8px;line-height:1.4}
+    #main{flex:1;min-width:0;display:flex;flex-direction:column}
+    #topbar{height:58px;background:rgba(255,255,255,.72);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 18px;gap:14px}
+    #topbar .left,#topbar .right{display:flex;align-items:center;gap:10px}
+    .field{display:flex;align-items:center;gap:6px;font-size:12.5px}
+    .field label{color:var(--muted-foreground)}
+    .field input,.field select{border:1px solid var(--input);border-radius:var(--radius-sm);padding:6px 8px;font-family:inherit;font-size:12.5px;outline:none}
+    .field input:focus,.field select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(42,43,100,.14)}
+    button{border:none;border-radius:var(--radius);padding:8px 14px;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;background:var(--primary);color:var(--primary-foreground)}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .btn-secondary{background:#fff;color:var(--foreground);border:1px solid var(--border)}
+    #status{font-size:12.5px;color:var(--muted-foreground)}
+    #content{flex:1;overflow-y:auto;padding:24px 28px}
+    .section{display:none}
+    .section.active{display:block}
+    .section-header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+    .section-title h1{font-size:18px;font-weight:800;letter-spacing:-.01em;margin:0}
+    .section-title p{font-size:12.5px;color:var(--muted-foreground);margin:4px 0 0}
+    .section-actions{display:flex;gap:8px}
+    .block{background:rgba(255,255,255,.72);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:18px}
+    .block h2{font-size:14px;font-weight:700;margin:0 0 14px}
+    .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
+    .kpi{background:rgba(255,255,255,.72);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+    .kpi .label{font-size:12px;color:var(--muted-foreground);min-height:32px;line-height:1.25}
+    .kpi .value{font-size:26px;font-weight:800;letter-spacing:-.02em;margin:6px 0;font-variant-numeric:tabular-nums}
+    .kpi .sub{font-size:11px;color:var(--muted-foreground)}
+    .kpi .value.good{color:var(--ok)}
+    .kpi .value.bad{color:var(--crit)}
+    .kpi .value.warn{color:var(--warn)}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    @media(max-width:1100px){.grid-2{grid-template-columns:1fr}}
+    .table-wrap{max-height:520px;overflow:auto;border-top:1px solid var(--border)}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th,td{padding:8px 10px;text-align:center;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
+    th{position:sticky;top:0;background:var(--muted);color:var(--muted-foreground);font-weight:600;z-index:1}
+    td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:inherit}
+    tbody tr:hover{background:rgba(0,0,0,.02)}
+    .badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:600}
+    .badge-green{background:rgba(0,181,107,.12);color:var(--ok)}
+    .badge-orange{background:rgba(255,140,0,.12);color:var(--warn)}
+    .badge-red{background:rgba(211,47,47,.12);color:var(--crit)}
+    .badge-gray{background:var(--muted);color:var(--muted-foreground)}
+    .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .filter-bar input,.filter-bar select{border:1px solid var(--input);border-radius:var(--radius-sm);padding:6px 8px;font-size:12.5px}
+    .empty{text-align:center;color:var(--muted-foreground);padding:30px;font-size:13px}
+    .loading{display:flex;flex-direction:column;align-items:center;gap:12px;color:var(--muted-foreground);padding:40px}
+    .spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error-box{background:rgba(211,47,47,.12);color:var(--crit);border:1px solid var(--crit);padding:12px 14px;border-radius:var(--radius)}
+    .tabs{display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--border)}
+    .tabs button{background:transparent;border-radius:var(--radius-sm) var(--radius-sm) 0 0;border-bottom:2px solid transparent;color:var(--muted-foreground)}
+    .tabs button.on{color:var(--primary);border-bottom-color:var(--primary)}
+  </style>
+</head>
+<body>
+  <div id="shell">
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-logo">AW</div>
+        <div class="brand-text">
+          <div class="brand-title">Auditoría Web</div>
+          <div class="brand-sub">Promesas vs canalizadores</div>
+        </div>
+      </div>
+      <nav id="nav">
+        <div class="nav-group">Análisis</div>
+        <a data-tab="dashboard" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg><span class="label">Dashboard</span></a>
+        <a data-tab="detalle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="label">Detalle</span></a>
+        <a data-tab="hipotesis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="label">Hipótesis SLA opuesto</span></a>
+        <a data-tab="referencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span class="label">Referencias</span></a>
+      </nav>
+      <div class="sidebar-foot">Inteligencia Operativa / Bidcom — Datos desde BigQuery</div>
+    </aside>
+
+    <main id="main">
+      <header id="topbar">
+        <div class="left"><span id="status">Elegí el período y tocá “Cargar”.</span></div>
+        <div class="right">
+          <div class="field"><label for="desde">Desde</label><input type="date" id="desde" value="2026-09-01"></div>
+          <div class="field"><label for="hasta">Hasta</label><input type="date" id="hasta" value="2026-09-30"></div>
+          <div class="field"><label for="tiendas">Tiendas</label><input type="text" id="tiendas" value="gadnic,bidcom" style="width:110px"></div>
+          <div class="field"><label for="habiles">Hábiles</label><select id="habiles"><option value="SI">Sí</option><option value="NO">No</option></select></div>
+          <button id="btnCargar">Cargar</button>
+        </div>
+      </header>
+
+      <div id="content">
+        <section id="dashboard" class="section active">
+          <div class="section-header">
+            <div class="section-title"><h1>Dashboard</h1><p>Resumen ejecutivo del período</p></div>
+            <div class="section-actions"><button class="btn-secondary" id="btnDescargarResumen">⬇️ CSV resumen</button></div>
+          </div>
+          <div id="dash-loading" class="loading hidden"><div class="spinner"></div><span>Calculando…</span></div>
+          <div id="dash-body">
+            <div class="kpi-row" id="dash-kpis"></div>
+            <div class="grid-2">
+              <div class="block"><h2>Por canalizador</h2><div class="table-wrap"><table id="tab-canal"><thead><tr><th>Canalizador</th><th>Total</th><th>OK</th><th>Menores</th><th>% menores</th><th>Hipótesis</th></tr></thead><tbody></tbody></table></div></div>
+              <div class="block"><h2>Por mes</h2><div class="table-wrap"><table id="tab-mes"><thead><tr><th>Mes</th><th>Canal</th><th>Total</th><th>Menores</th><th>% menores</th><th>Hipótesis</th></tr></thead><tbody></tbody></table></div></div>
+            </div>
+            <div class="block"><h2>Top 15 CPs con promesas menores</h2><div class="table-wrap"><table id="tab-topcp"><thead><tr><th>Canalizador</th><th>CP</th><th>Localidad</th><th>Tipo</th><th>Menores</th></tr></thead><tbody></tbody></table></div></div>
+          </div>
+        </section>
+
+        <section id="detalle" class="section">
+          <div class="section-header">
+            <div class="section-title"><h1>Detalle</h1><p>Una fila por venta web</p></div>
+            <div class="section-actions"><button class="btn-secondary" id="btnDescargarDetalle">⬇️ CSV detalle</button></div>
+          </div>
+          <div class="filter-bar">
+            <input type="text" id="detFiltro" placeholder="Buscar por id, CP, localidad…" style="width:260px">
+            <select id="detResultado"><option value="">Todos los resultados</option><option value="OK">OK</option><option value="PROMESA MENOR AL CANALIZADOR">Promesa menor</option><option value="SIN REFERENCIA DE CP">Sin referencia</option></select>
+            <select id="detCanal"><option value="">Todos los canalizadores</option><option value="OCA">OCA</option><option value="ANDREANI">Andreani</option><option value="ENTREGAR">Entregar</option></select>
+          </div>
+          <div id="det-loading" class="loading hidden"><div class="spinner"></div><span>Trayendo detalle…</span></div>
+          <div class="block"><div class="table-wrap"><table id="tab-detalle"><thead><tr><th>ID</th><th>Fecha compra</th><th>CP</th><th>Localidad</th><th>Canal</th><th>Tipo</th><th>Prometida</th><th>Plazo</th><th>Fecha mínima</th><th>Diff</th><th>Resultado</th><th>Hipótesis</th></tr></thead><tbody></tbody></table></div></div>
+        </section>
+
+        <section id="hipotesis" class="section">
+          <div class="section-header">
+            <div class="section-title"><h1>Hipótesis SLA opuesto</h1><p>Ventas donde la promesa parece usar el plazo del otro tipo de entrega</p></div>
+            <div class="section-actions"><button class="btn-secondary" id="btnDescargarHipotesis">⬇️ CSV hipótesis</button></div>
+          </div>
+          <div id="hip-loading" class="loading hidden"><div class="spinner"></div><span>Calculando…</span></div>
+          <div id="hip-body"></div>
+        </section>
+
+        <section id="referencias" class="section">
+          <div class="section-header">
+            <div class="section-title"><h1>Referencias</h1><p>Tabla de canalizadores por CP</p></div>
+            <div class="section-actions"><button class="btn-secondary" id="btnDescargarRef">⬇️ CSV referencia</button></div>
+          </div>
+          <div class="filter-bar"><input type="text" id="refFiltro" placeholder="Buscar CP o canalizador…" style="width:260px"><select id="refCanal"><option value="">Todos</option><option value="OCA">OCA</option><option value="ANDREANI">Andreani</option><option value="ENTREGAR">Entregar</option></select></div>
+          <div id="ref-loading" class="loading hidden"><div class="spinner"></div><span>Cargando…</span></div>
+          <div class="block"><div class="table-wrap"><table id="tab-ref"><thead><tr><th>Canalizador</th><th>CP</th><th>Días domicilio</th><th>Días sucursal</th></tr></thead><tbody></tbody></table></div></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function(){
+      const tabs=['dashboard','detalle','hipotesis','referencias'];
+      let tabActual='dashboard';
+      let dataDashboard=null, dataDetalle=[], dataReferencias=[];
+
+      function int(v){ return (v||0).toLocaleString('es-AR'); }
+      function pct(v){ if(!v && v!==0) return '0,0%'; return (v*100).toFixed(1).replace('.',',')+'%'; }
+      function esc(v){ return String(v==null?'':v).replace(/\u0026/g,'\u0026amp;').replace(/\u003c/g,'\u0026lt;').replace(/\u003e/g,'\u0026gt;').replace(/"/g,'\u0026quot;'); }
+      function norm(v){ return String(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+      function setStatus(msg, err){ var s=document.getElementById('status'); s.textContent=msg||''; s.style.color=err?'var(--crit)':'var(--muted-foreground)'; }
+      function loading(id, on){ var el=document.getElementById(id); if(el) el.classList.toggle('hidden',!on); }
+
+      function mostrarTab(t){
+        tabActual=t;
+        document.querySelectorAll('#nav a[data-tab]').forEach(function(a){ a.classList.toggle('active',a.dataset.tab===t); });
+        tabs.forEach(function(x){ document.getElementById(x).classList.toggle('active',x===t); });
+        if(t==='detalle' && dataDetalle.length===0) cargarDetalle();
+        if(t==='hipotesis' && !document.getElementById('hip-body').innerHTML) cargarHipotesis();
+        if(t==='referencias' && dataReferencias.length===0) cargarReferencias();
+      }
+      document.querySelectorAll('#nav a[data-tab]').forEach(function(a){ a.addEventListener('click',function(){ mostrarTab(a.dataset.tab); }); });
+
+      function params(){ return { fecha_desde:document.getElementById('desde').value, fecha_hasta:document.getElementById('hasta').value, tiendas_web:document.getElementById('tiendas').value, usar_dias_habiles:document.getElementById('habiles').value, limite: tabActual==='detalle'?'5000':'50000' }; }
+
+      function server(fn,args,ok,ko){
+        google.script.run[fn](args)
+          .withSuccessHandler(function(d){ try{ ok(d); }catch(err){ setStatus('Error procesando respuesta: '+err.message,true); } })
+          .withFailureHandler(function(e){ setStatus('Error del servidor: '+(e.message||JSON.stringify(e)),true); if(ko) ko(e); });
+      }
+
+      function kpi(cls,label,value,sub){
+        return '<div class="kpi"><div class="label">'+esc(label)+'</div><div class="value '+(cls||'')+'">'+esc(value)+'</div><div class="sub">'+esc(sub)+'</div></div>';
+      }
+
+      function badgeResultado(r){
+        if(r==='OK') return '<span class="badge badge-green">OK</span>';
+        if(r==='PROMESA MENOR AL CANALIZADOR') return '<span class="badge badge-red">Menor</span>';
+        if(r==='SIN REFERENCIA DE CP') return '<span class="badge badge-orange">Sin ref</span>';
+        return '<span class="badge badge-gray">'+esc(r)+'</span>';
+      }
+
+      function cargarDashboard(){
+        loading('dash-loading',true);
+        setStatus('Consultando BigQuery…');
+        server('getWebDashboard', params(), function(d){
+          dataDashboard=d;
+          loading('dash-loading',false);
+          document.getElementById('dash-kpis').innerHTML=
+            kpi('','Total ventas',int(d.total),d.cfg.fecha_desde+' a '+d.cfg.fecha_hasta)+
+            kpi('good','OK',int(d.ok),pct(d.ok/d.total))+
+            kpi('bad','Menores',int(d.menores),pct(d.menores/d.total))+
+            kpi('warn','Hipótesis SLA opuesto',int(d.hipotesis),pct(d.hipotesis/d.total))+
+            kpi('','Sin referencia',int(d.sinRef),'CP no encontrado')+
+            kpi('','Sin fecha',int(d.sinFecha),'campo vacío');
+          document.querySelector('#tab-canal tbody').innerHTML=(d.porCanal||[]).map(function(c){
+            return '<tr><td>'+esc(c.canal)+'</td><td>'+int(c.total)+'</td><td>'+int(c.ok)+'</td><td>'+int(c.menores)+'</td><td>'+pct(c.total?c.menores/c.total:0)+'</td><td>'+int(c.hipotesis)+'</td></tr>';
+          }).join('') || '<tr><td colspan="6" class="empty">Sin datos</td></tr>';
+          document.querySelector('#tab-mes tbody').innerHTML=(d.porMes||[]).map(function(m){
+            return '<tr><td>'+esc(m.mes)+'</td><td>'+esc(m.canal)+'</td><td>'+int(m.total)+'</td><td>'+int(m.menores)+'</td><td>'+pct(m.total?m.menores/m.total:0)+'</td><td>'+int(m.hipotesis)+'</td></tr>';
+          }).join('') || '<tr><td colspan="6" class="empty">Sin datos</td></tr>';
+          document.querySelector('#tab-topcp tbody').innerHTML=(d.topCPs||[]).map(function(c){
+            return '<tr><td>'+esc(c.canal)+'</td><td>'+esc(c.cp)+'</td><td>'+esc(c.localidad)+'</td><td>'+esc(c.tipo)+'</td><td>'+int(c.menores)+'</td></tr>';
+          }).join('') || '<tr><td colspan="5" class="empty">Sin datos</td></tr>';
+          setStatus('Listo. '+int(d.total)+' ventas analizadas.');
+        }, function(){ loading('dash-loading',false); });
+      }
+
+      function cargarDetalle(){
+        loading('det-loading',true);
+        server('getWebDetalle', params(), function(rows){
+          dataDetalle=rows;
+          loading('det-loading',false);
+          renderDetalle();
+          setStatus('Detalle listo: '+int(rows.length)+' filas.');
+        }, function(){ loading('det-loading',false); });
+      }
+      function renderDetalle(){
+        var q=norm(document.getElementById('detFiltro').value||'');
+        var res=document.getElementById('detResultado').value;
+        var canal=document.getElementById('detCanal').value;
+        var filas=dataDetalle.filter(function(r){
+          var txt=norm([r.id_venta,r.codigo_postal,r.localidad,r.canalizador,r.tipo_entrega].join(' '));
+          if(q && !txt.includes(q)) return false;
+          if(res && r.resultado!==res) return false;
+          if(canal && r.canalizador!==canal) return false;
+          return true;
+        });
+        var tbody=document.querySelector('#tab-detalle tbody');
+        tbody.innerHTML=filas.slice(0,500).map(function(r){
+          return '<tr><td>'+esc(r.id_venta)+'</td><td>'+esc(r.fecha_compra)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+esc(r.canalizador)+'</td><td>'+esc(r.tipo_entrega)+'</td><td>'+esc(r.fecha_prometida)+'</td><td>'+(r.plazo_canalizador_dias==null?'':r.plazo_canalizador_dias)+'</td><td>'+esc(r.fecha_minima_teorica)+'</td><td>'+(r.diferencia_dias==null?'':r.diferencia_dias)+'</td><td>'+badgeResultado(r.resultado)+'</td><td>'+esc(r.hipotesis_usa_sla_opuesto)+'</td></tr>';
+        }).join('') || '<tr><td colspan="12" class="empty">Sin datos</td></tr>';
+        if(filas.length>500) tbody.insertAdjacentHTML('afterbegin','<tr><td colspan="12" style="text-align:center;color:var(--muted-foreground)">Mostrando 500 de '+int(filas.length)+' filas</td></tr>');
+      }
+      document.getElementById('detFiltro').addEventListener('input', renderDetalle);
+      document.getElementById('detResultado').addEventListener('change', renderDetalle);
+      document.getElementById('detCanal').addEventListener('change', renderDetalle);
+
+      function cargarHipotesis(){
+        loading('hip-loading',true);
+        if(dataDetalle.length===0){
+          server('getWebDetalle', params(), function(rows){ dataDetalle=rows; renderHipotesis(); loading('hip-loading',false); });
+        } else { renderHipotesis(); loading('hip-loading',false); }
+      }
+      function renderHipotesis(){
+        var filas=dataDetalle.filter(function(r){ return r.hipotesis_usa_sla_opuesto==='SI'; });
+        var body=document.getElementById('hip-body');
+        if(!filas.length){ body.innerHTML='<div class="block empty">No se encontraron casos de hipótesis SLA opuesto.</div>'; return; }
+        var porCp={}; filas.forEach(function(r){ var k=r.canalizador+'|'+r.codigo_postal; if(!porCp[k]) porCp[k]=[r,0]; porCp[k][1]++; });
+        var top=Object.values(porCp).sort(function(a,b){ return b[1]-a[1]; }).slice(0,10);
+        var html='<div class="kpi-row">'+
+          kpi('','Casos hipótesis', int(filas.length), pct(filas.length/dataDetalle.length))+
+          kpi('bad','Exactos con SLA opuesto', int(filas.filter(function(r){return r.coincide_con_sla_opuesto==='SI';}).length), 'coinciden')+
+          kpi('','Domicilios afectados', int(filas.filter(function(r){return r.tipo_entrega==='DOMICILIO';}).length), 'usarían plazo sucursal')+
+          '</div>';
+        html+='<div class="block"><h2>Casos con hipótesis SLA opuesto</h2><div class="table-wrap"><table id="tab-hip"><thead><tr><th>ID</th><th>Fecha</th><th>CP</th><th>Localidad</th><th>Canal</th><th>Tipo</th><th>Prometida</th><th>Plazo correcto</th><th>Plazo opuesto</th><th>Coincide</th></tr></thead><tbody>';
+        html+=filas.map(function(r){
+          return '<tr><td>'+esc(r.id_venta)+'</td><td>'+esc(r.fecha_compra)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+esc(r.canalizador)+'</td><td>'+esc(r.tipo_entrega)+'</td><td>'+esc(r.fecha_prometida)+'</td><td>'+(r.plazo_canalizador_dias==null?'':r.plazo_canalizador_dias)+'</td><td>'+(r.plazo_opuesto_dias==null?'':r.plazo_opuesto_dias)+'</td><td>'+esc(r.coincide_con_sla_opuesto)+'</td></tr>';
+        }).join('');
+        html+='</tbody></table></div></div>';
+        html+='<div class="block"><h2>Top 10 CPs con hipótesis</h2><div class="table-wrap"><table id="tab-hipcp"><thead><tr><th>Canalizador</th><th>CP</th><th>Localidad</th><th>Casos</th></tr></thead><tbody>';
+        html+=top.map(function(p){ var r=p[0]; return '<tr><td>'+esc(r.canalizador)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+int(p[1])+'</td></tr>'; }).join('');
+        html+='</tbody></table></div></div>';
+        body.innerHTML=html;
+      }
+
+      function cargarReferencias(){
+        loading('ref-loading',true);
+        server('getWebReferencias', {}, function(rows){
+          dataReferencias=rows;
+          loading('ref-loading',false);
+          renderReferencias();
+        }, function(){ loading('ref-loading',false); });
+      }
+      function renderReferencias(){
+        var q=norm(document.getElementById('refFiltro').value||'');
+        var canal=document.getElementById('refCanal').value;
+        var filas=dataReferencias.filter(function(r){
+          var txt=norm([r.canalizador,r.codigo_postal].join(' '));
+          if(q && !txt.includes(q)) return false;
+          if(canal && r.canalizador!==canal) return false;
+          return true;
+        });
+        var tbody=document.querySelector('#tab-ref tbody');
+        tbody.innerHTML=filas.slice(0,500).map(function(r){
+          return '<tr><td>'+esc(r.canalizador)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+(r.dias_domicilio==null?'':r.dias_domicilio)+'</td><td>'+(r.dias_sucursal==null?'':r.dias_sucursal)+'</td></tr>';
+        }).join('') || '<tr><td colspan="4" class="empty">Sin datos</td></tr>';
+      }
+      document.getElementById('refFiltro').addEventListener('input', renderReferencias);
+      document.getElementById('refCanal').addEventListener('change', renderReferencias);
+
+      function descargarCSV(nombre, headers, rows){
+        var sep=';';
+        var lineas=[headers.join(sep)];
+        rows.forEach(function(r){
+          var fila=headers.map(function(h){ var v=r[h]; if(v==null) return ''; return '"'+String(v).replace(/"/g,'""')+'"'; });
+          lineas.push(fila.join(sep));
+        });
+        var blob=new Blob(['\uFEFF'+lineas.join('\n')], {type:'text/csv;charset=utf-8'});
+        var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nombre; a.click();
+      }
+
+      document.getElementById('btnCargar').addEventListener('click', cargarDashboard);
+      document.getElementById('btnDescargarResumen').addEventListener('click', function(){
+        if(!dataDashboard){ setStatus('Primero cargá el dashboard',true); return; }
+        var rows=dataDashboard.porCanal.map(function(c){ return { canalizador:c.canal, total:c.total, ok:c.ok, menores:c.menores, hipotesis:c.hipotesis }; });
+        descargarCSV('resumen_auditoria_web.csv',['canalizador','total','ok','menores','hipotesis'],rows);
+      });
+      document.getElementById('btnDescargarDetalle').addEventListener('click', function(){
+        if(!dataDetalle.length){ setStatus('Primero cargá el detalle',true); return; }
+        descargarCSV('detalle_auditoria_web.csv', Object.keys(dataDetalle[0]), dataDetalle);
+      });
+      document.getElementById('btnDescargarHipotesis').addEventListener('click', function(){
+        var filas=dataDetalle.filter(function(r){ return r.hipotesis_usa_sla_opuesto==='SI'; });
+        if(!filas.length){ setStatus('No hay hipótesis para descargar',true); return; }
+        descargarCSV('hipotesis_sla_opuesto.csv', Object.keys(filas[0]), filas);
+      });
+      document.getElementById('btnDescargarRef').addEventListener('click', function(){
+        if(!dataReferencias.length){ setStatus('Primero cargá referencias',true); return; }
+        descargarCSV('referencia_canalizadores.csv', Object.keys(dataReferencias[0]), dataReferencias);
+      });
+
+      mostrarTab('dashboard');
+      cargarDashboard();
+    })();
+  </script>
+</body>
+</html>
