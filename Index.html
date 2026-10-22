@@ -197,9 +197,10 @@
       function params(){ return { fecha_desde:document.getElementById('desde').value, fecha_hasta:document.getElementById('hasta').value, tiendas_web:document.getElementById('tiendas').value, usar_dias_habiles:document.getElementById('habiles').value, limite: tabActual==='detalle'?'5000':'50000' }; }
 
       function server(fn,args,ok,ko){
-        google.script.run[fn](args)
+        // Los handlers van ANTES de llamar a la funcion: google.script.run.fn() no devuelve nada
+        google.script.run
           .withSuccessHandler(function(d){ try{ ok(d); }catch(err){ setStatus('Error procesando respuesta: '+err.message,true); } })
-          .withFailureHandler(function(e){ setStatus('Error del servidor: '+(e.message||JSON.stringify(e)),true); if(ko) ko(e); });
+          .withFailureHandler(function(e){ setStatus('Error del servidor: '+(e.message||JSON.stringify(e)),true); if(ko) ko(e); })[fn](args);
       }
 
       function kpi(cls,label,value,sub){
