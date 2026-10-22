@@ -101,6 +101,8 @@
         <a data-tab="dashboard" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg><span class="label">Dashboard</span></a>
         <a data-tab="detalle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="label">Detalle</span></a>
         <a data-tab="hipotesis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="label">Hipótesis SLA opuesto</span></a>
+        <a data-tab="real"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span class="label">Real vs prometido</span></a>
+        <a data-tab="cruce"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg><span class="label">Cruce auditoría × real</span></a>
         <a data-tab="referencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span class="label">Referencias</span></a>
       </nav>
       <div class="sidebar-foot">Inteligencia Operativa / Bidcom — Datos desde BigQuery</div>
@@ -159,6 +161,24 @@
           <div id="hip-body"></div>
         </section>
 
+        <section id="real" class="section">
+          <div class="section-header">
+            <div class="section-title"><h1>Real vs prometido</h1><p>Fecha prometida al cliente contra entrega efectiva (ventas web, sin preventas, modificadas ni canceladas). El filtro de tiendas no aplica acá.</p></div>
+            <div class="section-actions"><button class="btn-secondary" id="btnDescargarReal">⬇️ CSV real vs prometido</button></div>
+          </div>
+          <div id="real-loading" class="loading hidden"><div class="spinner"></div><span>Calculando…</span></div>
+          <div id="real-body"></div>
+        </section>
+
+        <section id="cruce" class="section">
+          <div class="section-header">
+            <div class="section-title"><h1>Cruce auditoría × entrega real</h1><p>¿Las ventas con promesa menor al canalizador son las que llegan tarde?</p></div>
+            <div class="section-actions"><button class="btn-secondary" id="btnDescargarCruce">⬇️ CSV cruce</button></div>
+          </div>
+          <div id="cruce-loading" class="loading hidden"><div class="spinner"></div><span>Cruzando…</span></div>
+          <div id="cruce-body"></div>
+        </section>
+
         <section id="referencias" class="section">
           <div class="section-header">
             <div class="section-title"><h1>Referencias</h1><p>Tabla de canalizadores por CP</p></div>
@@ -174,9 +194,9 @@
 
   <script>
     (function(){
-      const tabs=['dashboard','detalle','hipotesis','referencias'];
+      const tabs=['dashboard','detalle','hipotesis','real','cruce','referencias'];
       let tabActual='dashboard';
-      let dataDashboard=null, dataDetalle=[], dataReferencias=[], dataHip=null;
+      let dataDashboard=null, dataDetalle=[], dataReferencias=[], dataHip=null, dataReal=null, dataCruce=null;
 
       function int(v){ return (v||0).toLocaleString('es-AR'); }
       function pct(v){ if(!v && v!==0) return '0,0%'; return (v*100).toFixed(1).replace('.',',')+'%'; }
@@ -191,6 +211,8 @@
         tabs.forEach(function(x){ document.getElementById(x).classList.toggle('active',x===t); });
         if(t==='detalle' && dataDetalle.length===0) cargarDetalle();
         if(t==='hipotesis' && !dataHip) cargarHipotesis();
+        if(t==='real' && !dataReal) cargarReal();
+        if(t==='cruce' && !dataCruce) cargarCruce();
         if(t==='referencias' && dataReferencias.length===0) cargarReferencias();
       }
       document.querySelectorAll('#nav a[data-tab]').forEach(function(a){ a.addEventListener('click',function(){ mostrarTab(a.dataset.tab); }); });
@@ -272,6 +294,94 @@
       document.getElementById('detResultado').addEventListener('change', renderDetalle);
       document.getElementById('detCanal').addEventListener('change', renderDetalle);
 
+
+      function cargarReal(forzar){
+        loading('real-loading',true);
+        setStatus('Comparando promesa contra entrega real…');
+        var p=params(); if(forzar===true) p.forzar=true;
+        server('getWebReal', p, function(d){
+          dataReal=d;
+          loading('real-loading',false);
+          renderReal();
+          setStatus('Real vs prometido listo.'+(d.cache?' (desde caché, 20 min)':''));
+        }, function(){ loading('real-loading',false); });
+      }
+      function sumaReal(filas){
+        var t={envios:0,con_entrega:0,a_tiempo:0,tarde_1d:0,tarde_2_3d:0,tarde_4d_mas:0,vencidas_sin_entrega:0,en_plazo_sin_entrega:0,suma_dif_dias:0};
+        filas.forEach(function(r){ Object.keys(t).forEach(function(k){ t[k]+=r[k]||0; }); });
+        return t;
+      }
+      function filaReal(label1,label2,t){
+        var exig=t.envios-t.en_plazo_sin_entrega;
+        var pEnt=t.con_entrega?t.a_tiempo/t.con_entrega:0;
+        var pCons=exig?t.a_tiempo/exig:0;
+        var dif=t.con_entrega?(t.suma_dif_dias/t.con_entrega).toFixed(1).replace('.',','):'-';
+        var cls=pCons>=0.9?'badge-green':(pCons>=0.7?'badge-orange':'badge-red');
+        return '<tr><td>'+esc(label1)+'</td><td>'+esc(label2)+'</td><td>'+int(t.envios)+'</td><td>'+int(t.con_entrega)+'</td><td>'+pct(pEnt)+'</td>'+
+          '<td><span class="badge '+cls+'">'+pct(pCons)+'</span></td><td>'+int(t.tarde_1d)+'</td><td>'+int(t.tarde_2_3d)+'</td><td>'+int(t.tarde_4d_mas)+'</td><td>'+int(t.vencidas_sin_entrega)+'</td><td>'+dif+'</td></tr>';
+      }
+      function renderReal(){
+        var body=document.getElementById('real-body');
+        var filas=(dataReal&&dataReal.filas)||[];
+        if(!filas.length){ body.innerHTML='<div class="block empty">Sin datos para el período/courier elegido.</div>'; return; }
+        var t=sumaReal(filas), exig=t.envios-t.en_plazo_sin_entrega;
+        var html='<div class="kpi-row">'+
+          kpi('','Envíos',int(t.envios),dataReal.cfg.fecha_desde+' a '+dataReal.cfg.fecha_hasta)+
+          kpi('','Con entrega registrada',int(t.con_entrega),pct(t.envios?t.con_entrega/t.envios:0)+' del total')+
+          kpi('good','A tiempo (solo entregados)',pct(t.con_entrega?t.a_tiempo/t.con_entrega:0),'optimista: ignora lo que falta entregar')+
+          kpi('bad','A tiempo (conservador)',pct(exig?t.a_tiempo/exig:0),'cuenta como tarde lo vencido sin entrega')+
+          kpi('warn','Vencidas sin entrega',int(t.vencidas_sin_entrega),'promesa pasada, sin fecha de entrega')+
+          '</div>';
+        var head='<thead><tr><th>__A__</th><th>__B__</th><th>Envíos</th><th>Con entrega</th><th>% a tiempo (entregados)</th><th>% a tiempo (conservador)</th><th>Tarde 1 día</th><th>Tarde 2-3 días</th><th>Tarde 4+ días</th><th>Vencidas sin entrega</th><th>Atraso prom. (días)</th></tr></thead>';
+        var porCM={}; filas.forEach(function(r){ var k=r.carrier+'|'+r.modo; (porCM[k]=porCM[k]||[]).push(r); });
+        html+='<div class="block"><h2>Por courier y modo de entrega</h2><div class="table-wrap"><table>'+head.replace('__A__','Courier').replace('__B__','Modo')+'<tbody>'+
+          Object.keys(porCM).map(function(k){ var pr=k.split('|'); return filaReal(pr[0],pr[1],sumaReal(porCM[k])); }).join('')+'</tbody></table></div></div>';
+        html+='<div class="block"><h2>Por mes de compra</h2><div class="table-wrap"><table>'+head.replace('__A__','Courier / modo').replace('__B__','Mes')+'<tbody>'+
+          filas.map(function(r){ return filaReal(r.carrier+' · '+r.modo,r.mes,r); }).join('')+'</tbody></table></div></div>';
+        html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)">'+
+          '<b>Cómo leerlo.</b> “Conservador” divide los envíos a tiempo por todo lo que ya debería haber llegado (excluye solo lo que todavía está en plazo). El primer porcentaje solo mira lo entregado y por eso sobreestima. '+
+          'En “A RETIRAR” se mide contra la llegada a sucursal (no contra el retiro del cliente); si el courier no informa esa llegada, queda como “vencida sin entrega”, así que ese modo subestima. '+
+          'El courier solo se informa desde el 29/7 (OCA), 9/9 (Entregar y otros) y 26/9 (Andreani): antes aparece “(sin carrier)”.</div>';
+        body.innerHTML=html;
+      }
+
+
+      function cargarCruce(forzar){
+        loading('cruce-loading',true);
+        setStatus('Cruzando auditoría con entrega real…');
+        var p=params(); if(forzar===true) p.forzar=true;
+        server('getWebCruce', p, function(d){
+          dataCruce=d; loading('cruce-loading',false); renderCruce();
+          setStatus('Cruce listo: '+int(d.total)+' ventas.'+(d.cache?' (desde caché, 20 min)':''));
+        }, function(){ loading('cruce-loading',false); });
+      }
+      function sumEstados(filas){
+        var t={A_TIEMPO:0,TARDE:0,VENCIDA_SIN_ENTREGA:0,EN_PLAZO:0,n:0};
+        filas.forEach(function(r){ t[r.estado]+=r.n; t.n+=r.n; });
+        return t;
+      }
+      function filaCruce(c1,c2,t){
+        var exig=t.n-t.EN_PLAZO, pc=exig?t.A_TIEMPO/exig:0;
+        var cls=pc>=0.9?'badge-green':(pc>=0.7?'badge-orange':'badge-red');
+        return '<tr><td>'+esc(c1)+'</td><td>'+esc(c2)+'</td><td>'+int(t.n)+'</td><td>'+int(t.A_TIEMPO)+'</td><td>'+int(t.TARDE)+'</td><td>'+int(t.VENCIDA_SIN_ENTREGA)+'</td><td>'+int(t.EN_PLAZO)+'</td><td><span class="badge '+cls+'">'+pct(pc)+'</span></td></tr>';
+      }
+      function renderCruce(){
+        var body=document.getElementById('cruce-body');
+        var filas=(dataCruce&&dataCruce.filas)||[];
+        if(!filas.length){ body.innerHTML='<div class="block empty">Sin datos para el período/courier elegido.</div>'; return; }
+        var head='<thead><tr><th>__A__</th><th>Resultado auditoría</th><th>Ventas</th><th>A tiempo</th><th>Tarde</th><th>Vencidas sin entrega</th><th>En plazo (sin entrega)</th><th>% a tiempo (conservador)</th></tr></thead>';
+        function grupo(r){ return r.resultado==='OK'?'OK':(r.resultado==='PROMESA MENOR AL CANALIZADOR'?'PROMESA MENOR':'OTROS ('+r.resultado+')'); }
+        var porC={}; filas.forEach(function(r){ var k=r.canal+'|'+grupo(r); (porC[k]=porC[k]||[]).push(r); });
+        var claves=Object.keys(porC).sort();
+        var html='<div class="block"><h2>Por canalizador y resultado de la auditoría</h2><div class="table-wrap"><table>'+head.replace('__A__','Canalizador')+'<tbody>'+
+          claves.map(function(k){ var pr=k.split('|'); return filaCruce(pr[0],pr[1],sumEstados(porC[k])); }).join('')+'</tbody></table></div></div>';
+        var hip=filas.filter(function(r){ return r.hipotesis==='SI'; });
+        if(hip.length){ var th=sumEstados(hip);
+          html+='<div class="block"><h2>Casos “SLA opuesto”</h2><div class="table-wrap"><table>'+head.replace('__A__','Segmento')+'<tbody>'+filaCruce('Hipótesis SLA opuesto','—',th)+'</tbody></table></div></div>'; }
+        html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)"><b>Cómo leerlo.</b> Si el % a tiempo de “PROMESA MENOR” es bastante peor que el de “OK”, la auditoría está detectando el problema real. Si ambos son parecidos, el atraso no se explica por el plazo del canalizador (operación del courier o promesa mal calculada en general). “En plazo” = promesa todavía no vencida y sin entrega. Se excluyen preventas, modificadas y canceladas.</div>';
+        body.innerHTML=html;
+      }
+
       function cargarHipotesis(){
         loading('hip-loading',true);
         setStatus('Calculando hipótesis…');
@@ -345,12 +455,16 @@
 
       document.getElementById('btnCargar').addEventListener('click', function(){
         // Al cambiar periodo/filtros hay que descartar lo ya cargado en las otras pestañas
-        dataDetalle=[]; dataHip=null; dataReferencias=dataReferencias;
+        dataDetalle=[]; dataHip=null; dataReal=null; dataCruce=null; dataReferencias=dataReferencias;
         document.getElementById('hip-body').innerHTML='';
+        document.getElementById('real-body').innerHTML='';
+        document.getElementById('cruce-body').innerHTML='';
         document.querySelector('#tab-detalle tbody').innerHTML='';
         cargarDashboard(true);
         if(tabActual==='detalle') cargarDetalle();
         if(tabActual==='hipotesis') cargarHipotesis();
+        if(tabActual==='real') cargarReal(true);
+        if(tabActual==='cruce') cargarCruce(true);
       });
       document.getElementById('btnDescargarResumen').addEventListener('click', function(){
         if(!dataDashboard){ setStatus('Primero cargá el dashboard',true); return; }
@@ -365,6 +479,16 @@
         var filas=(dataHip&&dataHip.filas)||[];
         if(!filas.length){ setStatus('No hay hipótesis para descargar',true); return; }
         descargarCSV('hipotesis_sla_opuesto.csv', Object.keys(filas[0]), filas);
+      });
+      document.getElementById('btnDescargarReal').addEventListener('click', function(){
+        var filas=(dataReal&&dataReal.filas)||[];
+        if(!filas.length){ setStatus('No hay datos para descargar',true); return; }
+        descargarCSV('real_vs_prometido.csv', Object.keys(filas[0]), filas);
+      });
+      document.getElementById('btnDescargarCruce').addEventListener('click', function(){
+        var filas=(dataCruce&&dataCruce.filas)||[];
+        if(!filas.length){ setStatus('No hay datos para descargar',true); return; }
+        descargarCSV('cruce_auditoria_real.csv', Object.keys(filas[0]), filas);
       });
       document.getElementById('btnDescargarRef').addEventListener('click', function(){
         if(!dataReferencias.length){ setStatus('Primero cargá referencias',true); return; }

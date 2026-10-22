@@ -15,6 +15,10 @@ const CONFIG = {
   DATASET_CHECKOUT: 'ds_checkoutbidcom',
   TABLA_CHECKOUT: 'CHK_Carrito',
   DATASET_MASTER: 'ds_presupuestos',
+  // Tabla con promesa vs entrega real (vive en el proyecto data-governance, no en mysql-to-bigquery).
+  // Si da "not found in location X", cambiá LOCATION_LOGISTICA por X (ej. 'southamerica-east1').
+  TABLA_LOGISTICA: 'data-governance-473116.sil_logistics.order_shippings',
+  LOCATION_LOGISTICA: 'US',
   MEDIOS: { 1: 'OCA', 34: 'ANDREANI', 33: 'ENTREGAR' },
   HOJAS: {
     CONFIG: 'Config', CANAL: 'Canalizadores',
@@ -614,6 +618,146 @@ function consultarBigQuery_(query, location) {
     });
     return obj;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Real vs prometido: fecha prometida (CHK_Carrito.fecha_entrega) contra entrega efectiva
+// ---------------------------------------------------------------------------
+function buildQueryReal_(cfg) {
+  const desde = normFechaStr_(cfg.fecha_desde) || '2026-09-01';
+  const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
+  const c = String(cfg.canal || '').toUpperCase().replace(/[^A-Z]/g, '');
+  const filtroCarrier = c ? "  AND UPPER(carrier) = '" + c + "'" : '';
+  // A RETIRAR: delivered_at es cuando el CLIENTE retira -> se mide contra la llegada a sucursal
+  const ref = "CASE WHEN delivery_mode = 'A RETIRAR' THEN DATE(arrived_for_pickup_at) ELSE DATE(delivered_at) END";
+  return [
+    'WITH b AS (',
+    '  SELECT COALESCE(carrier, \'(sin carrier)\') AS carrier, delivery_mode,',
+    "    FORMAT_DATE('%Y-%m', DATE(ordered_at)) AS mes, promised_delivery_date AS prom,",
+    '    ' + ref + ' AS ref_date',
+    '  FROM `' + CONFIG.TABLA_LOGISTICA + '`',
+    "  WHERE channel = 'WEB'",
+    "    AND DATE(ordered_at) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    '    AND promised_delivery_date IS NOT NULL',
+    '    AND NOT is_preorder AND NOT is_modified AND NOT is_cancelled',
+    filtroCarrier,
+    ')',
+    'SELECT carrier, delivery_mode, mes,',
+    '  COUNT(*) AS envios,',
+    '  COUNTIF(ref_date IS NOT NULL) AS con_entrega,',
+    '  COUNTIF(ref_date IS NOT NULL AND ref_date <= prom) AS a_tiempo,',
+    '  COUNTIF(ref_date IS NOT NULL AND DATE_DIFF(ref_date, prom, DAY) = 1) AS tarde_1d,',
+    '  COUNTIF(ref_date IS NOT NULL AND DATE_DIFF(ref_date, prom, DAY) BETWEEN 2 AND 3) AS tarde_2_3d,',
+    '  COUNTIF(ref_date IS NOT NULL AND DATE_DIFF(ref_date, prom, DAY) >= 4) AS tarde_4d_mas,',
+    '  COUNTIF(ref_date IS NULL AND prom < CURRENT_DATE()) AS vencidas_sin_entrega,',
+    '  COUNTIF(ref_date IS NULL AND prom >= CURRENT_DATE()) AS en_plazo_sin_entrega,',
+    '  IFNULL(SUM(IF(ref_date IS NOT NULL, DATE_DIFF(ref_date, prom, DAY), 0)), 0) AS suma_dif_dias',
+    'FROM b',
+    'GROUP BY 1, 2, 3',
+    'ORDER BY 1, 2, 3'
+  ].filter(Boolean).join('\n');
+}
+
+function getWebReal(params) {
+  params = params || {};
+  const key = cacheKey_('real', params);
+  if (!params.forzar) {
+    const cached = cacheGet_(key);
+    if (cached) { cached.cache = true; return cached; }
+  }
+  const cfg = buildWebCfg_(params);
+  const query = buildQueryReal_(cfg);
+  console.log(query);
+  const rows = consultarBigQuery_(query, CONFIG.LOCATION_LOGISTICA).map(function (r) {
+    const o = { carrier: r.carrier, modo: r.delivery_mode, mes: r.mes };
+    ['envios', 'con_entrega', 'a_tiempo', 'tarde_1d', 'tarde_2_3d', 'tarde_4d_mas',
+     'vencidas_sin_entrega', 'en_plazo_sin_entrega', 'suma_dif_dias'].forEach(function (k) { o[k] = Number(r[k] || 0); });
+    return o;
+  });
+  const res = { filas: rows, cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta } };
+  cachePut_(key, res);
+  return res;
+}
+
+// ---------------------------------------------------------------------------
+// Cruce: resultado de la auditoria (promesa vs canalizador) x entrega real
+// Une CHK_Carrito (proyecto mysql-to-bigquery) con order_shippings (data-governance):
+// ambas deben estar en la misma location (CONFIG.LOCATION_LOGISTICA) y tu usuario con acceso a las dos.
+// ---------------------------------------------------------------------------
+function buildQueryCruce_(cfg) {
+  const desde = normFechaStr_(cfg.fecha_desde) || '2026-09-01';
+  const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
+  const filtroTienda = (cfg.tiendas_web || '').trim()
+    ? '  AND LOWER(chk.tienda) IN (' + cfg.tiendas_web.split(',')
+        .map(function (t) { return "'" + t.trim().toLowerCase().replace(/'/g, '') + "'"; }).join(', ') + ')'
+    : '';
+  const filtroMedio = '  AND chk.medio_envio_id IN (' + idsMedio_(cfg).join(', ') + ')';
+  // A RETIRAR: se mide contra la llegada a sucursal; el resto contra la entrega
+  const ref = "CASE WHEN os.delivery_mode = 'A RETIRAR' THEN DATE(os.arrived_for_pickup_at) ELSE DATE(os.delivered_at) END";
+  return [
+    'SELECT',
+    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha))                      AS fecha_compra,",
+    "  REGEXP_EXTRACT(chk.cp, r'\\d{4}')                             AS codigo_postal,",
+    '  chk.medio_envio_id                                            AS medio_envio_id,',
+    "  CASE WHEN NULLIF(chk.sucursal_oca, '') IS NOT NULL",
+    "       THEN 'SUCURSAL' ELSE 'DOMICILIO' END                    AS tipo_entrega,",
+    '  chk.fecha_entrega                                             AS fecha_entrega,',
+    "  FORMAT_DATE('%Y-%m-%d', " + ref + ")                          AS fecha_real,",
+    '  ANY_VALUE(chk.localidad)                                      AS localidad,',
+    '  COUNT(*)                                                      AS n',
+    'FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
+    'JOIN `' + CONFIG.TABLA_LOGISTICA + '` os',
+    '  ON os.order_id = SAFE_CAST(chk.id AS INT64)',
+    "WHERE os.channel = 'WEB'",
+    '  AND NOT os.is_preorder AND NOT os.is_modified AND NOT os.is_cancelled',
+    "  AND DATE(chk.fecha) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "  AND NULLIF(chk.fecha_entrega, '') IS NOT NULL",
+    "  AND NULLIF(chk.cp, '') IS NOT NULL",
+    filtroTienda,
+    filtroMedio,
+    'GROUP BY 1, 2, 3, 4, 5, 6'
+  ].filter(Boolean).join('\n');
+}
+
+function getWebCruce(params) {
+  params = params || {};
+  const key = cacheKey_('cruce', params);
+  if (!params.forzar) {
+    const cached = cacheGet_(key);
+    if (cached) { cached.cache = true; return cached; }
+  }
+  const cfg = buildWebCfg_(params);
+  const ref = loadCanalizadoresWeb_();
+  const usaHabiles = cfg.usar_dias_habiles === 'SI';
+  const altas = { OCA: cfg.alta_OCA || '2020-01-01', ANDREANI: cfg.alta_ANDREANI, ENTREGAR: cfg.alta_ENTREGAR };
+  const query = buildQueryCruce_(cfg);
+  console.log(query);
+  const rows = consultarBigQuery_(query, CONFIG.LOCATION_LOGISTICA);
+  const hoy = parseISO_(fmtISO_(new Date()));
+  const acc = {};
+  let total = 0;
+  rows.forEach(function (r) {
+    const n = Number(r.n || 1);
+    const e = evaluarFila_(r, ref, altas, usaHabiles);
+    const prom = parseFechaEntrega_(r.fecha_entrega);
+    const real = parseISO_(r.fecha_real);
+    let estado;
+    if (real && prom) estado = real.getTime() <= prom.getTime() ? 'A_TIEMPO' : 'TARDE';
+    else if (!real && prom && prom.getTime() < hoy.getTime()) estado = 'VENCIDA_SIN_ENTREGA';
+    else estado = 'EN_PLAZO';
+    const k = [e.canal || '(sin canal)', e.tipo, e.resultado, e.hipotesis_opuesto, estado].join('|');
+    if (!acc[k]) acc[k] = { canal: e.canal || '(sin canal)', tipo: e.tipo, resultado: e.resultado,
+      hipotesis: e.hipotesis_opuesto, estado: estado, n: 0 };
+    acc[k].n += n;
+    total += n;
+  });
+  const res = {
+    total: total,
+    filas: Object.keys(acc).map(function (k) { return acc[k]; }),
+    cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta }
+  };
+  cachePut_(key, res);
+  return res;
 }
 
 // IDs de medio a auditar: todos, o solo el courier elegido (cfg.canal = OCA | ANDREANI | ENTREGAR)
