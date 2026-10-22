@@ -22,7 +22,7 @@
     #shell{display:flex;height:100vh;overflow:hidden}
     #sidebar{width:236px;flex:0 0 236px;background:rgba(250,250,250,.86);backdrop-filter:blur(20px);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 14px}
     .brand{display:flex;align-items:center;gap:10px;padding:4px 6px 18px}
-    .brand-logo{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:700;flex:0 0 28px}
+    .brand-logo{width:32px;height:32px;border-radius:50%;flex:0 0 32px;object-fit:cover}
     .brand-title{font-size:15px;font-weight:700;letter-spacing:-.01em}
     .brand-sub{font-size:11px;color:var(--muted-foreground)}
     #nav{flex:1}
@@ -90,7 +90,7 @@
   <div id="shell">
     <aside id="sidebar">
       <div class="brand">
-        <div class="brand-logo">AW</div>
+        <img class="brand-logo" alt="Bidcom" src="data:image/png;base64,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">
         <div class="brand-text">
           <div class="brand-title">Auditoría Web</div>
           <div class="brand-sub">Promesas vs canalizadores</div>
@@ -124,7 +124,7 @@
         <section id="dashboard" class="section active">
           <div class="section-header">
             <div class="section-title"><h1>Dashboard</h1><p>¿La fecha que prometemos se cumple? Entrega real por courier y, más abajo, diagnóstico contra el canalizador. Ventas web, sin preventas, modificadas ni canceladas.</p></div>
-            <div class="section-actions"><button class="btn-secondary" id="btnDescargarReal">⬇️ CSV real vs prometido</button><button class="btn-secondary" id="btnDescargarResumen">⬇️ CSV diagnóstico</button></div>
+            <div class="section-actions"><button id="btnCasos">⬇️ Casos a revisar (CSV)</button><button class="btn-secondary" id="btnDescargarReal">⬇️ CSV real vs prometido</button><button class="btn-secondary" id="btnDescargarResumen">⬇️ CSV diagnóstico</button></div>
           </div>
           <div id="real-loading" class="loading hidden"><div class="spinner"></div><span>Comparando promesa contra entrega real…</span></div>
           <div id="real-body"></div>
@@ -166,7 +166,7 @@
         <section id="cruce" class="section">
           <div class="section-header">
             <div class="section-title"><h1>Cruce auditoría × entrega real</h1><p>¿Las ventas con promesa menor al canalizador son las que llegan tarde?</p></div>
-            <div class="section-actions"><button class="btn-secondary" id="btnDescargarCruce">⬇️ CSV cruce</button></div>
+            <div class="section-actions"><button id="btnCasos2">⬇️ Casos a revisar (CSV)</button><button class="btn-secondary" id="btnDescargarCruce">⬇️ CSV cruce</button></div>
           </div>
           <div id="cruce-loading" class="loading hidden"><div class="spinner"></div><span>Cruzando…</span></div>
           <div id="cruce-body"></div>
@@ -491,6 +491,18 @@
         if(!filas.length){ setStatus('No hay datos para descargar',true); return; }
         descargarCSV('cruce_auditoria_real.csv', Object.keys(filas[0]), filas);
       });
+      function descargarCasos(btn){
+        var original=btn.textContent; btn.disabled=true; btn.textContent='Armando casos…';
+        setStatus('Armando listado de casos a revisar (puede tardar 1-2 min)…');
+        server('getWebCasos', params(), function(d){
+          btn.disabled=false; btn.textContent=original;
+          if(!d.casos.length){ setStatus('No hay casos a revisar en el período/courier elegido.'); return; }
+          descargarCSV('casos_a_revisar_'+document.getElementById('desde').value+'_'+document.getElementById('hasta').value+'.csv', Object.keys(d.casos[0]), d.casos);
+          setStatus('Descargados '+int(d.casos.length)+' casos a revisar de '+int(d.ventas)+' ventas.'+(d.truncado?' OJO: había '+int(d.total)+', se descargaron los primeros '+int(d.casos.length)+'. Acotá fechas o courier.':''));
+        }, function(){ btn.disabled=false; btn.textContent=original; });
+      }
+      document.getElementById('btnCasos').addEventListener('click', function(){ descargarCasos(this); });
+      document.getElementById('btnCasos2').addEventListener('click', function(){ descargarCasos(this); });
       document.getElementById('btnDescargarRef').addEventListener('click', function(){
         if(!dataReferencias.length){ setStatus('Primero cargá referencias',true); return; }
         descargarCSV('referencia_canalizadores.csv', Object.keys(dataReferencias[0]), dataReferencias);

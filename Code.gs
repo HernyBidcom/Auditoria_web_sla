@@ -780,6 +780,106 @@ function getWebCruce(params) {
   return res;
 }
 
+// ---------------------------------------------------------------------------
+// Casos a revisar: una fila por venta (para descargar). Incluye ventas con promesa menor al
+// canalizador, entrega tardia o promesa vencida sin entrega.
+// ---------------------------------------------------------------------------
+const MAX_CASOS_ = 50000;
+
+function buildQueryCasos_(cfg) {
+  const desde = normFechaStr_(cfg.fecha_desde) || '2026-09-01';
+  const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
+  const filtroTienda = (cfg.tiendas_web || '').trim()
+    ? '  AND LOWER(chk.tienda) IN (' + cfg.tiendas_web.split(',')
+        .map(function (t) { return "'" + t.trim().toLowerCase().replace(/'/g, '') + "'"; }).join(', ') + ')'
+    : '';
+  const filtroMedio = '  AND chk.medio_envio_id IN (' + idsMedio_(cfg).join(', ') + ')';
+  const ref = "CASE WHEN os.delivery_mode = 'A RETIRAR' THEN DATE(os.arrived_for_pickup_at) ELSE DATE(os.delivered_at) END";
+  return [
+    'SELECT',
+    '  chk.id                                                        AS id_venta,',
+    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha))                      AS fecha_compra,",
+    '  chk.tienda                                                    AS tienda,',
+    "  REGEXP_EXTRACT(chk.cp, r'\\d{4}')                             AS codigo_postal,",
+    '  chk.localidad                                                 AS localidad,',
+    '  chk.medio_envio_id                                            AS medio_envio_id,',
+    "  CASE WHEN NULLIF(chk.sucursal_oca, '') IS NOT NULL",
+    "       THEN 'SUCURSAL' ELSE 'DOMICILIO' END                    AS tipo_entrega,",
+    '  chk.fecha_entrega                                             AS fecha_entrega,',
+    '  os.delivery_mode                                              AS modo_erp,',
+    '  os.tracking_number                                            AS tracking,',
+    "  FORMAT_DATE('%Y-%m-%d', " + ref + ")                          AS fecha_real",
+    'FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
+    'JOIN `' + CONFIG.TABLA_LOGISTICA + '` os',
+    '  ON os.order_id = SAFE_CAST(chk.id AS INT64)',
+    "WHERE os.channel = 'WEB'",
+    '  AND NOT os.is_preorder AND NOT os.is_modified AND NOT os.is_cancelled',
+    "  AND DATE(chk.fecha) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "  AND NULLIF(chk.fecha_entrega, '') IS NOT NULL",
+    "  AND NULLIF(chk.cp, '') IS NOT NULL",
+    filtroTienda,
+    filtroMedio
+  ].filter(Boolean).join('\n');
+}
+
+function getWebCasos(params) {
+  params = params || {};
+  const cfg = buildWebCfg_(params);
+  const ref = loadCanalizadoresWeb_();
+  const usaHabiles = cfg.usar_dias_habiles === 'SI';
+  const altas = altasWeb_(cfg);
+  const rows = consultarBigQuery_(buildQueryCasos_(cfg), CONFIG.LOCATION_LOGISTICA);
+  const hoy = parseISO_(fmtISO_(new Date()));
+  const casos = [];
+  rows.forEach(function (r) {
+    const e = evaluarFila_(r, ref, altas, usaHabiles);
+    const prom = parseFechaEntrega_(r.fecha_entrega);
+    const real = parseISO_(r.fecha_real);
+    let estado = 'EN PLAZO', atraso = '';
+    if (real && prom) {
+      atraso = diffDays_(prom, real);
+      estado = atraso <= 0 ? 'A TIEMPO' : 'TARDE';
+    } else if (!real && prom && prom.getTime() < hoy.getTime()) {
+      estado = 'VENCIDA SIN ENTREGA';
+      atraso = diffDays_(prom, hoy);
+    }
+    const motivos = [];
+    if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') motivos.push('PROMESA MENOR AL CANALIZADOR');
+    if (e.hipotesis_opuesto === 'SI') motivos.push('SLA OPUESTO');
+    if (estado === 'TARDE') motivos.push('ENTREGA TARDE');
+    if (estado === 'VENCIDA SIN ENTREGA') motivos.push('VENCIDA SIN ENTREGA');
+    if (!motivos.length) return;
+    casos.push({
+      id_venta: r.id_venta,
+      fecha_compra: e.fecha_compra,
+      tienda: r.tienda || '',
+      courier: e.canal,
+      tipo_entrega: e.tipo,
+      modo_erp: r.modo_erp || '',
+      codigo_postal: e.cp,
+      localidad: r.localidad || '',
+      fecha_prometida: e.fecha_prometida,
+      plazo_canalizador_dias: e.plazo == null ? '' : e.plazo,
+      fecha_minima_teorica: e.fecha_teorica,
+      prometida_vs_minima_dias: e.diff == null ? '' : e.diff,
+      resultado_auditoria: e.resultado,
+      hipotesis_sla_opuesto: e.hipotesis_opuesto,
+      fecha_real: r.fecha_real || '',
+      estado_real: estado,
+      dias_atraso: atraso,
+      tracking: r.tracking || '',
+      motivo: motivos.join(' + ')
+    });
+  });
+  casos.sort(function (a, b) {
+    const pa = a.motivo.indexOf('PROMESA MENOR') >= 0 ? 0 : 1, pb = b.motivo.indexOf('PROMESA MENOR') >= 0 ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return (Number(b.dias_atraso) || 0) - (Number(a.dias_atraso) || 0);
+  });
+  const total = casos.length;
+  return { casos: casos.slice(0, MAX_CASOS_), total: total, truncado: total > MAX_CASOS_, ventas: rows.length };
+}
+
 // IDs de medio a auditar: todos, o solo el courier elegido (cfg.canal = OCA | ANDREANI | ENTREGAR)
 function idsMedio_(cfg) {
   const c = String((cfg && cfg.canal) || '').toUpperCase();
