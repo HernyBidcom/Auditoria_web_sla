@@ -1,29 +1,45 @@
 /**
  * ============================================================================
- *  AUDITORIA WEB  -  Promesa al cliente vs plazo real del canalizador
+ *  AUDITORIA WEB  -  Promesa al cliente vs entrega real (por courier real)
  *  Apps Script Web App + funciones de spreadsheet opcionales
  * ============================================================================
- *  PROMESA  -> ds_checkoutbidcom.CHK_Carrito.fecha_entrega
- *  MEDIO    -> ds_presupuestos.despachos_medios (por medio_envio_id)
- *  CANALIZ. -> referencia embebida (OCA / ANDREANI / ENTREGAR)
+ *  MODELO VERIFICADO (octubre 2026):
+ *   - El checkout promete por CP y MEDIO de envio (1 MOTO, 2 CORREO,
+ *     3 SUCURSAL OCA, 5 MOTO ESTANDAR; catalogo CHK_MedioEnvio, no el de
+ *     despachos del ERP) con su propia tabla de plazos
+ *     (codigos_postales.plazo_entrega).
+ *   - El courier NO se elige al prometer: se asigna al despachar y queda en
+ *     order_shippings.carrier (OCA / MOTO / ANDREANI / ENTREGAR / HOP /
+ *     QUADMINDS). Los carritos web nunca traen los medios 33/34.
+ *   - Por eso la auditoria mide la fecha prometida al cliente
+ *     (CHK_Carrito.fecha_entrega) contra la entrega real, atribuida al
+ *     courier que efectivamente despacho.
+ *  El analisis contra la tabla de canalizadores embebida queda como LEGADO:
+ *   esa tabla no corresponde ni a la regla del checkout ni al SLA real.
  * ============================================================================
  */
 
 const CONFIG = {
   PROJECT_ID: 'mysql-to-bigquery-418612',
   LOCATION: 'US',
+  // Los TIMESTAMP vienen en UTC: sin esto, las compras despues de las 21:00
+  // de Buenos Aires corren al dia siguiente y el lag queda mal calculado.
+  TZ: 'America/Argentina/Buenos_Aires',
   DATASET_CHECKOUT: 'ds_checkoutbidcom',
   TABLA_CHECKOUT: 'CHK_Carrito',
   DATASET_MASTER: 'ds_presupuestos',
-  // Tabla con promesa vs entrega real (vive en el proyecto data-governance, no en mysql-to-bigquery).
+  // Tabla con entrega real (vive en el proyecto data-governance, no en mysql-to-bigquery).
   // Si da "not found in location X", cambiá LOCATION_LOGISTICA por X (ej. 'southamerica-east1').
   TABLA_LOGISTICA: 'data-governance-473116.sil_logistics.order_shippings',
   LOCATION_LOGISTICA: 'US',
-  // Para sumar un courier (ej. URBANO): agregar su id aca, un bloque en CANALIZADORES_DATA con el mismo
-  // nombre, su alta en ALTAS_DEFAULT, y verificar como lo informa order_shippings.carrier (se compara en mayusculas).
-  MEDIOS: { 1: 'OCA', 34: 'ANDREANI', 33: 'ENTREGAR' },
-  // Alta (primer dia que se audita al courier): fechas desde las que order_shippings informa el carrier.
-  ALTAS_DEFAULT: { OCA: '2020-01-01', ANDREANI: '2026-09-26', ENTREGAR: '2026-09-09' },
+  // Medios de envio del CHECKOUT (CHK_MedioEnvio). OJO: NO es el catalogo de
+  // despachos del ERP; los carritos web nunca traen los medios 33/34.
+  MEDIOS: { 1: 'MOTO', 2: 'CORREO', 3: 'SUCURSAL OCA', 5: 'MOTO ESTANDAR' },
+  // Couriers reales: el que efectivamente despacho el pedido (order_shippings.carrier).
+  CARRIERS: ['OCA', 'ANDREANI', 'ENTREGAR', 'MOTO', 'HOP', 'QUADMINDS'],
+  // Primera fecha en la que cada courier informa su nombre en order_shippings (canal WEB).
+  // Verificado contra los datos: Andreani desde el 7/8/2026 y Entregar desde el 7/9/2026.
+  ALTAS_DEFAULT: { OCA: '2016-12-14', MOTO: '2025-05-05', ANDREANI: '2026-08-07', ENTREGAR: '2026-09-07', HOP: '2026-10-19', QUADMINDS: '2026-10-09' },
   HOJAS: {
     CONFIG: 'Config', CANAL: 'Canalizadores',
     OUT: 'Auditoria Web', RESUMEN: 'Resumen',
@@ -88,9 +104,9 @@ function setup() {
       ['usar_dias_habiles', 'SI', 'SI = salta fines de semana (no feriados)'],
       ['limite_filas', '5000', 'tope para el modo DETALLE'],
       ['limite_filas_agregado', '150000', 'tope para el modo AGREGADO'],
-      ['alta_OCA', '2020-01-01', 'fecha de alta del canalizador'],
-      ['alta_ANDREANI', '2025-11-01', 'CONFIRMAR fecha real'],
-      ['alta_ENTREGAR', '2025-11-01', 'CONFIRMAR fecha real (EnDro)']
+      ['alta_OCA', '2016-12-14', 'primer envío WEB con carrier OCA'],
+      ['alta_ANDREANI', '2026-08-07', 'primer envío WEB con carrier ANDREANI (verificado)'],
+      ['alta_ENTREGAR', '2026-09-07', 'primer envío WEB con carrier ENTREGAR (verificado)']
     ];
     shCfg.getRange(1, 1, cfgRows.length, cfgRows[0].length).setValues(cfgRows);
     shCfg.setFrozenRows(1);
@@ -367,11 +383,12 @@ function prepararContexto_(limite) {
 // ---------------------------------------------------------------------------
 function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Auditoria Web — Promesas vs Canalizadores');
+    .setTitle('Auditoría Web — Promesa vs entrega real');
 }
 
+// Courier que despacho cada envio (order_shippings.carrier), no el medio del checkout.
 function nombresCouriers_() {
-  return Object.keys(CONFIG.MEDIOS).map(function (id) { return CONFIG.MEDIOS[id]; });
+  return CONFIG.CARRIERS.slice();
 }
 function getWebCouriers() { return nombresCouriers_(); }
 
@@ -435,7 +452,7 @@ function prepararContextoWeb_(params, limite, agrupada) {
 // Cache (resultados chicos del tablero, 20 min)
 // ---------------------------------------------------------------------------
 // Subir este valor cada vez que cambie la forma de los datos cacheados
-const CACHE_VER_ = 'v6';
+const CACHE_VER_ = 'v7';
 function cacheKey_(prefijo, params) {
   const p = params || {};
   const raw = [prefijo, p.fecha_desde, p.fecha_hasta, p.tiendas_web, p.usar_dias_habiles, p.canal, CACHE_VER_].join('|');
@@ -684,14 +701,14 @@ function buildQueryReal_(cfg) {
   return [
     'WITH b AS (',
     '  SELECT COALESCE(carrier, \'(sin carrier)\') AS carrier, delivery_mode,',
-    "    FORMAT_DATE('%Y-%m', DATE(ordered_at)) AS mes,",
-    "    FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(DATE(ordered_at), WEEK(MONDAY))) AS semana,",
+    "    FORMAT_DATE('%Y-%m', DATE(ordered_at, 'America/Argentina/Buenos_Aires')) AS mes,",
+    "    FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(DATE(ordered_at, 'America/Argentina/Buenos_Aires'), WEEK(MONDAY))) AS semana,",
     '    dispatch_status,',
     '    promised_delivery_date AS prom,',
     '    ' + ref + ' AS ref_date',
     '  FROM `' + CONFIG.TABLA_LOGISTICA + '`',
     "  WHERE channel = 'WEB'",
-    "    AND DATE(ordered_at) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "    AND DATE(ordered_at, 'America/Argentina/Buenos_Aires') BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
     '    AND promised_delivery_date IS NOT NULL',
     '    AND NOT is_preorder AND NOT is_modified AND NOT is_cancelled',
     filtroCarrier,
@@ -703,8 +720,8 @@ function buildQueryReal_(cfg) {
     '  COUNTIF(ref_date IS NOT NULL AND DATE_DIFF(ref_date, prom, DAY) = 1) AS tarde_1d,',
     '  COUNTIF(ref_date IS NOT NULL AND DATE_DIFF(ref_date, prom, DAY) BETWEEN 2 AND 3) AS tarde_2_3d,',
     '  COUNTIF(ref_date IS NOT NULL AND DATE_DIFF(ref_date, prom, DAY) >= 4) AS tarde_4d_mas,',
-    '  COUNTIF(ref_date IS NULL AND prom < CURRENT_DATE()) AS vencidas_sin_entrega,',
-    '  COUNTIF(ref_date IS NULL AND prom >= CURRENT_DATE()) AS en_plazo_sin_entrega,',
+    "  COUNTIF(ref_date IS NULL AND prom < CURRENT_DATE('America/Argentina/Buenos_Aires')) AS vencidas_sin_entrega,",
+    "  COUNTIF(ref_date IS NULL AND prom >= CURRENT_DATE('America/Argentina/Buenos_Aires')) AS en_plazo_sin_entrega,",
     '  IFNULL(SUM(IF(ref_date IS NOT NULL, DATE_DIFF(ref_date, prom, DAY), 0)), 0) AS suma_dif_dias',
     'FROM b',
     'GROUP BY 1, 2, 3, 4, 5',
@@ -767,7 +784,7 @@ function buildQueryCruce_(cfg) {
   const ref = "CASE WHEN os.delivery_mode = 'A RETIRAR' THEN DATE(os.arrived_for_pickup_at) ELSE DATE(os.delivered_at) END";
   return [
     'SELECT',
-    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha))                      AS fecha_compra,",
+    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha, 'America/Argentina/Buenos_Aires'))                      AS fecha_compra,",
     "  REGEXP_EXTRACT(chk.cp, r'\\d{4}')                             AS codigo_postal,",
     '  chk.medio_envio_id                                            AS medio_envio_id,',
     "  CASE WHEN NULLIF(chk.sucursal_oca, '') IS NOT NULL",
@@ -782,7 +799,7 @@ function buildQueryCruce_(cfg) {
     '  ON os.order_id = SAFE_CAST(chk.id AS INT64)',
     "WHERE os.channel = 'WEB'",
     '  AND NOT os.is_preorder AND NOT os.is_modified AND NOT os.is_cancelled',
-    "  AND DATE(chk.fecha) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "  AND DATE(chk.fecha, 'America/Argentina/Buenos_Aires') BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
     "  AND NULLIF(chk.fecha_entrega, '') IS NOT NULL",
     "  AND NULLIF(chk.cp, '') IS NOT NULL",
     filtroTienda,
@@ -836,64 +853,32 @@ function getWebCruce(params) {
 }
 
 // ---------------------------------------------------------------------------
-// Casos a revisar: una fila por venta (para descargar). Incluye ventas con promesa menor al
-// canalizador, entrega tardia o promesa vencida sin entrega.
+// Casos a revisar: una fila por venta (para descargar). Vencidas que todavia
+// no salieron del deposito (nuestro), entregas tardias y vencidas en manos
+// del courier; siempre atribuidas al courier que efectivamente despacho.
 // ---------------------------------------------------------------------------
 const MAX_CASOS_ = 50000;
 
 function buildQueryCasos_(cfg) {
-  const desde = normFechaStr_(cfg.fecha_desde) || '2026-09-01';
-  const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
-  const filtroTienda = (cfg.tiendas_web || '').trim()
-    ? '  AND LOWER(chk.tienda) IN (' + cfg.tiendas_web.split(',')
-        .map(function (t) { return "'" + t.trim().toLowerCase().replace(/'/g, '') + "'"; }).join(', ') + ')'
-    : '';
-  const filtroMedio = '  AND chk.medio_envio_id IN (' + idsMedio_(cfg).join(', ') + ')';
-  const ref = "CASE WHEN os.delivery_mode = 'A RETIRAR' THEN DATE(os.arrived_for_pickup_at) ELSE DATE(os.delivered_at) END";
-  return [
-    'SELECT',
-    '  chk.id                                                        AS id_venta,',
-    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha))                      AS fecha_compra,",
-    '  chk.tienda                                                    AS tienda,',
-    "  REGEXP_EXTRACT(chk.cp, r'\\d{4}')                             AS codigo_postal,",
-    '  chk.localidad                                                 AS localidad,',
-    '  chk.medio_envio_id                                            AS medio_envio_id,',
-    "  CASE WHEN NULLIF(chk.sucursal_oca, '') IS NOT NULL",
-    "       THEN 'SUCURSAL' ELSE 'DOMICILIO' END                    AS tipo_entrega,",
-    '  chk.fecha_entrega                                             AS fecha_entrega,',
-    '  os.delivery_mode                                              AS modo_erp,',
-    '  os.tracking_number                                            AS tracking,',
-    '  os.dispatch_status                                            AS estado_despacho,',
-    '  os.deposit_name                                               AS deposito,',
-    "  FORMAT_DATE('%Y-%m-%d', " + ref + ")                          AS fecha_real",
-    'FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
-    'JOIN `' + CONFIG.TABLA_LOGISTICA + '` os',
-    '  ON os.order_id = SAFE_CAST(chk.id AS INT64)',
-    "WHERE os.channel = 'WEB'",
-    '  AND NOT os.is_preorder AND NOT os.is_modified AND NOT os.is_cancelled',
-    "  AND DATE(chk.fecha) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
-    "  AND NULLIF(chk.fecha_entrega, '') IS NOT NULL",
-    "  AND NULLIF(chk.cp, '') IS NOT NULL",
-    filtroTienda,
-    filtroMedio
-  ].filter(Boolean).join('\n');
+  // Usa la base comun de cumplimiento: carritos con promesa + envio real
+  // deduplicado por pedido, atribuido al courier que efectivamente despacho.
+  return baseCumplimientoSql_(cfg, true) + '\n' + [
+    'SELECT * FROM base',
+    'ORDER BY (CASE WHEN ref IS NULL THEN 1 ELSE 0 END), prom'
+  ].join('\n');
 }
 
 function getWebCasos(params) {
   params = params || {};
   const cfg = buildWebCfg_(params);
-  const ref = loadCanalizadoresWeb_();
-  const usaHabiles = cfg.usar_dias_habiles === 'SI';
-  const altas = altasWeb_(cfg);
   const rows = consultarBigQuery_(buildQueryCasos_(cfg), CONFIG.LOCATION_LOGISTICA);
   const hoy = parseISO_(fmtISO_(new Date()));
   const casos = [];
   const excluidas = {};
   rows.forEach(function (r) {
-    if (esExcluido_(r.estado_despacho)) { sumaExcluida_(excluidas, r.estado_despacho, 1); return; }
-    const e = evaluarFila_(r, ref, altas, usaHabiles);
-    const prom = parseFechaEntrega_(r.fecha_entrega);
-    const real = parseISO_(r.fecha_real);
+    if (esExcluido_(r.estado)) { sumaExcluida_(excluidas, r.estado, 1); return; }
+    const prom = parseISO_(r.prom);
+    const real = parseISO_(r.ref);
     let estado = 'EN PLAZO', atraso = '', catEstado = '', cat = '';
     if (real && prom) {
       atraso = diffDays_(prom, real);
@@ -904,9 +889,10 @@ function getWebCasos(params) {
       catEstado = NOMBRE_CATEGORIA_[cat];
       atraso = diffDays_(prom, hoy);
     }
-    // alcance 'revisar' (default): lo que hay que mirar de nuestro lado: promesa menor / SLA opuesto /
-    //   vencidas que NO salieron del deposito (demorado, preparado, en preparacion, en espera...) y estados no mapeados.
-    // alcance 'courier': entregas tardias y vencidas que estan en manos del courier (en transito, fallidas, sin fecha).
+    // alcance 'revisar' (default): lo que esta de nuestro lado: vencidas que NO salieron del
+    //   deposito (preparado, en preparacion, en espera, modificar...) y estados no mapeados.
+    // alcance 'courier': entregas tardias y vencidas que estan en manos del courier
+    //   (en transito / en ruta, entrega fallida, o sin fecha informada).
     const alcance = String(params.alcance || 'revisar');
     const vencida = estado === 'VENCIDA SIN ENTREGA';
     const motivos = [];
@@ -914,30 +900,24 @@ function getWebCasos(params) {
       if (estado === 'TARDE') motivos.push('ENTREGA TARDE');
       if (vencida && (cat === 'COURIER' || cat === 'FALLIDA' || cat === 'FALTA_DATO')) motivos.push('VENCIDA SIN ENTREGA: ' + catEstado);
     } else {
-      if (e.resultado === 'PROMESA MENOR AL CANALIZADOR') motivos.push('PROMESA MENOR AL CANALIZADOR');
-      if (e.hipotesis_opuesto === 'SI') motivos.push('SLA OPUESTO');
-      if (vencida && (cat === 'SIN_DESPACHAR' || cat === 'OTRO')) motivos.push('VENCIDA SIN DESPACHAR: ' + (normEstado_(r.estado_despacho) || 'SIN ESTADO'));
+      if (vencida && (cat === 'SIN_DESPACHAR' || cat === 'OTRO')) motivos.push('VENCIDA SIN DESPACHAR: ' + (normEstado_(r.estado) || 'SIN ESTADO'));
     }
     if (!motivos.length) return;
     casos.push({
       id_venta: r.id_venta,
-      fecha_compra: e.fecha_compra,
+      fecha_compra: r.fecha_compra,
       tienda: r.tienda || '',
-      courier: e.canal,
-      tipo_entrega: e.tipo,
-      modo_erp: r.modo_erp || '',
+      courier: r.carrier,
+      medio: CONFIG.MEDIOS[Number(r.medio_envio_id)] || ('MEDIO ' + r.medio_envio_id),
+      tipo_entrega: r.tipo_entrega,
+      modo_erp: r.modo || '',
       deposito: r.deposito || '',
-      codigo_postal: e.cp,
+      codigo_postal: r.cp4,
       localidad: r.localidad || '',
-      fecha_prometida: e.fecha_prometida,
-      plazo_canalizador_dias: e.plazo == null ? '' : e.plazo,
-      fecha_minima_teorica: e.fecha_teorica,
-      prometida_vs_minima_dias: e.diff == null ? '' : e.diff,
-      resultado_auditoria: e.resultado,
-      hipotesis_sla_opuesto: e.hipotesis_opuesto,
-      fecha_real: r.fecha_real || '',
+      fecha_prometida: r.prom || '',
+      fecha_real: r.ref || '',
       estado_real: estado,
-      estado_despacho_erp: r.estado_despacho || '',
+      estado_despacho_erp: r.estado || '',
       situacion_vencida: catEstado,
       dias_atraso: atraso,
       tracking: r.tracking || '',
@@ -945,12 +925,330 @@ function getWebCasos(params) {
     });
   });
   casos.sort(function (a, b) {
-    const pa = a.motivo.indexOf('PROMESA MENOR') >= 0 ? 0 : 1, pb = b.motivo.indexOf('PROMESA MENOR') >= 0 ? 0 : 1;
-    if (pa !== pb) return pa - pb;
     return (Number(b.dias_atraso) || 0) - (Number(a.dias_atraso) || 0);
   });
   const total = casos.length;
   return { casos: casos.slice(0, MAX_CASOS_), total: total, truncado: total > MAX_CASOS_, ventas: rows.length, excluidas: excluidas, alcance: String(params.alcance || 'revisar') };
+}
+
+// ---------------------------------------------------------------------------
+// CUMPLIMIENTO REAL — nucleo del analisis (octubre 2026)
+//
+// La promesa la hace el checkout por CP y medio de envio, con su propia tabla
+// de plazos; el courier se asigna recien al despachar. Se mide la fecha
+// prometida al cliente (CHK_Carrito.fecha_entrega) contra la entrega real,
+// atribuida al courier que efectivamente despacho (order_shippings.carrier).
+// Un pedido con varios envios aporta su entrega mas tardia (la que completa
+// el pedido a ojos del cliente).
+// ---------------------------------------------------------------------------
+
+function filtroTiendaSql_(cfg) {
+  const tiendas = (cfg.tiendas_web || '').trim();
+  if (!tiendas) return '';
+  return '  AND LOWER(chk.tienda) IN (' + tiendas.split(',')
+    .map(function (t) { return "'" + t.trim().toLowerCase().replace(/'/g, '') + "'"; }).join(', ') + ')';
+}
+
+// Courier elegido arriba (filtro opcional). Sin filtro entran todos, incluidos
+// los envios que todavia no informan courier (se ven como '(SIN COURIER)').
+function filtroCarrierSql_(cfg) {
+  const c = String(cfg.canal || '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (!c) return '';
+  return "  AND UPPER(IFNULL(os.carrier, '')) = '" + c + "'";
+}
+
+// Base comun: carritos del checkout con promesa + su envio real (un envio por
+// pedido: el que tiene fecha de entrega y, entre esos, el mas tardio).
+function baseCumplimientoSql_(cfg, conCp) {
+  const desde = normFechaStr_(cfg.fecha_desde) || '2026-09-01';
+  const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
+  return [
+    'WITH os AS (',
+    '  SELECT * FROM `' + CONFIG.TABLA_LOGISTICA + '`',
+    "  WHERE channel = 'WEB'",
+    '    AND NOT is_preorder AND NOT is_modified AND NOT is_cancelled',
+    '  QUALIFY ROW_NUMBER() OVER (PARTITION BY order_id',
+    '    ORDER BY (IFNULL(delivered_at, arrived_for_pickup_at) IS NOT NULL) DESC,',
+    '             IFNULL(delivered_at, arrived_for_pickup_at) DESC) = 1',
+    '),',
+    'base AS (',
+    '  SELECT',
+    '    chk.id AS id_venta,',
+    "    FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha, '" + CONFIG.TZ + "')) AS fecha_compra,",
+    '    chk.tienda AS tienda,',
+    "    UPPER(IFNULL(os.carrier, '(SIN COURIER)')) AS carrier,",
+    "    IFNULL(os.delivery_mode, '(SIN MODO)') AS modo,",
+    "    UPPER(IFNULL(os.dispatch_status, '')) AS estado,",
+    "    CASE WHEN NULLIF(chk.sucursal_oca, '') IS NOT NULL THEN 'SUCURSAL' ELSE 'DOMICILIO' END AS tipo_entrega,",
+    '    chk.medio_envio_id AS medio_envio_id,',
+    "    FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(DATE(chk.fecha, '" + CONFIG.TZ + "'), WEEK(MONDAY))) AS semana,",
+    conCp ? "    REGEXP_EXTRACT(chk.cp, r'\\d{4}') AS cp4," : '',
+    conCp ? '    chk.localidad AS localidad,' : '',
+    '    os.deposit_name AS deposito,',
+    '    os.tracking_number AS tracking,',
+    "    SAFE.PARSE_DATE('%d/%m/%Y', SPLIT(chk.fecha_entrega, ',')[OFFSET(0)]) AS prom,",
+    "    CASE WHEN os.delivery_mode = 'A RETIRAR' THEN DATE(os.arrived_for_pickup_at) ELSE DATE(os.delivered_at) END AS ref",
+    '  FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
+    '  JOIN os ON os.order_id = chk.id',
+    "  WHERE DATE(chk.fecha, '" + CONFIG.TZ + "') BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "    AND NULLIF(chk.fecha_entrega, '') IS NOT NULL",
+    "    AND NULLIF(chk.cp, '') IS NOT NULL",
+    filtroTiendaSql_(cfg),
+    filtroCarrierSql_(cfg),
+    ')'
+  ].filter(Boolean).join('\n');
+}
+
+// Resumen por courier real, modo, semana de compra y estado de despacho.
+function buildQueryCumplimientoCouriers_(cfg) {
+  return baseCumplimientoSql_(cfg, false) + '\n' + [
+    'SELECT carrier, modo, semana, estado,',
+    '  COUNT(*) AS ventas,',
+    '  COUNTIF(ref IS NOT NULL) AS entregadas,',
+    '  COUNTIF(ref IS NOT NULL AND prom IS NOT NULL AND ref <= prom) AS a_tiempo,',
+    '  COUNTIF(ref IS NOT NULL AND prom IS NOT NULL AND DATE_DIFF(ref, prom, DAY) = 1) AS tarde_1d,',
+    '  COUNTIF(ref IS NOT NULL AND prom IS NOT NULL AND DATE_DIFF(ref, prom, DAY) BETWEEN 2 AND 3) AS tarde_2_3d,',
+    '  COUNTIF(ref IS NOT NULL AND prom IS NOT NULL AND DATE_DIFF(ref, prom, DAY) >= 4) AS tarde_4d_mas,',
+    "  COUNTIF(ref IS NULL AND prom IS NOT NULL AND prom < CURRENT_DATE('" + CONFIG.TZ + "')) AS vencidas,",
+    "  COUNTIF(ref IS NULL AND prom IS NOT NULL AND prom >= CURRENT_DATE('" + CONFIG.TZ + "')) AS en_plazo,",
+    '  IFNULL(SUM(IF(ref IS NOT NULL AND prom IS NOT NULL, DATE_DIFF(ref, prom, DAY), 0)), 0) AS suma_dif',
+    'FROM base',
+    'GROUP BY 1, 2, 3, 4'
+  ].join('\n');
+}
+
+// Desempeno por CP (para detectar las zonas problemáticas de cada courier).
+function buildQueryCumplimientoCps_(cfg) {
+  return baseCumplimientoSql_(cfg, true) + '\n' + [
+    'SELECT carrier, cp4, ANY_VALUE(localidad) AS localidad, modo,',
+    '  COUNT(*) AS ventas,',
+    '  COUNTIF(ref IS NOT NULL) AS entregadas,',
+    '  COUNTIF(ref IS NOT NULL AND prom IS NOT NULL AND ref <= prom) AS a_tiempo,',
+    '  COUNTIF(ref IS NOT NULL AND prom IS NOT NULL AND DATE_DIFF(ref, prom, DAY) >= 1) AS tarde,',
+    "  COUNTIF(ref IS NULL AND prom IS NOT NULL AND prom < CURRENT_DATE('" + CONFIG.TZ + "')) AS vencidas,",
+    '  IFNULL(SUM(IF(ref IS NOT NULL AND prom IS NOT NULL, DATE_DIFF(ref, prom, DAY), 0)), 0) AS suma_dif',
+    "FROM base WHERE estado NOT IN ('DEMORADO', 'REBOTADO')",
+    'GROUP BY 1, 2, 4'
+  ].join('\n');
+}
+
+function getWebCumplimiento(params) {
+  params = params || {};
+  const key = cacheKey_('cumpl', params);
+  if (!params.forzar) {
+    const cached = cacheGet_(key);
+    if (cached) { cached.cache = true; return cached; }
+  }
+  const cfg = buildWebCfg_(params);
+  const rowsA = consultarBigQuery_(buildQueryCumplimientoCouriers_(cfg), CONFIG.LOCATION_LOGISTICA);
+  const rowsB = consultarBigQuery_(buildQueryCumplimientoCps_(cfg), CONFIG.LOCATION_LOGISTICA);
+
+  const CAMPOS = ['ventas', 'entregadas', 'a_tiempo', 'tarde_1d', 'tarde_2_3d', 'tarde_4d_mas', 'vencidas', 'en_plazo', 'suma_dif'];
+  function acum(dst, r) {
+    CAMPOS.forEach(function (k) { dst[k] = (dst[k] || 0) + Number(r[k] || 0); });
+  }
+  function nuevo() {
+    const o = { venc_courier: 0, venc_fallida: 0, venc_sin_despachar: 0, venc_otro: 0, venc_falta_dato: 0 };
+    CAMPOS.forEach(function (k) { o[k] = 0; });
+    return o;
+  }
+
+  const excluidas = {};
+  const total = nuevo();
+  const porCarrier = {}, porSemana = {};
+  rowsA.forEach(function (r) {
+    if (esExcluido_(r.estado)) { sumaExcluida_(excluidas, r.estado, Number(r.ventas || 0)); return; }
+    const carrier = r.carrier;
+    if (!porCarrier[carrier]) porCarrier[carrier] = nuevo();
+    if (!porCarrier[carrier].carrier) porCarrier[carrier].carrier = carrier;
+    const c = porCarrier[carrier];
+    acum(c, r); acum(total, r);
+    const v = Number(r.vencidas || 0);
+    const cat = categoriaEstado_(r.estado);
+    if (cat === 'COURIER') { c.venc_courier += v; total.venc_courier += v; }
+    else if (cat === 'SIN_DESPACHAR') { c.venc_sin_despachar += v; total.venc_sin_despachar += v; }
+    else if (cat === 'FALLIDA') { c.venc_fallida += v; total.venc_fallida += v; }
+    else if (cat === 'FALTA_DATO') { c.venc_falta_dato += v; total.venc_falta_dato += v; }
+    else { c.venc_otro += v; total.venc_otro += v; }
+    const kS = r.semana + '|' + carrier;
+    if (!porSemana[kS]) porSemana[kS] = { semana: r.semana, carrier: carrier, ventas: 0, entregadas: 0, a_tiempo: 0, venc_courier: 0, venc_fallida: 0 };
+    const s = porSemana[kS];
+    ['ventas', 'entregadas', 'a_tiempo'].forEach(function (k) { s[k] += Number(r[k] || 0); });
+    if (cat === 'COURIER') s.venc_courier += v;
+    if (cat === 'FALLIDA') s.venc_fallida += v;
+  });
+
+  // Hotspots: los CPs con mas entregas tarde + vencidas, por courier.
+  const porCp = {};
+  rowsB.forEach(function (r) {
+    const carrier = r.carrier;
+    if (!porCp[carrier]) porCp[carrier] = [];
+    porCp[carrier].push({
+      carrier: carrier, cp: r.cp4, localidad: r.localidad || '', modo: r.modo,
+      ventas: Number(r.ventas || 0), entregadas: Number(r.entregadas || 0),
+      a_tiempo: Number(r.a_tiempo || 0), tarde: Number(r.tarde || 0),
+      vencidas: Number(r.vencidas || 0), suma_dif: Number(r.suma_dif || 0)
+    });
+  });
+  const topCPs = [];
+  Object.keys(porCp).forEach(function (carrier) {
+    porCp[carrier].sort(function (a, b) { return (b.tarde + b.vencidas) - (a.tarde + a.vencidas); });
+    topCPs.push.apply(topCPs, porCp[carrier].slice(0, 15));
+  });
+  topCPs.sort(function (a, b) { return (b.tarde + b.vencidas) - (a.tarde + a.vencidas); });
+
+  const res = {
+    total: total,
+    porCourier: Object.keys(porCarrier).map(function (k) { return porCarrier[k]; })
+      .sort(function (a, b) { return b.ventas - a.ventas; }),
+    porSemana: Object.keys(porSemana).map(function (k) { return porSemana[k]; })
+      .sort(function (a, b) { return a.semana.localeCompare(b.semana) || b.ventas - a.ventas; }),
+    topCPs: topCPs,
+    excluidas: excluidas,
+    cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta }
+  };
+  cachePut_(key, res);
+  return res;
+}
+
+// ---------------------------------------------------------------------------
+// MOTOR DE PROMESA: que promete realmente el checkout por CP y medio (moda en
+// dias habiles) contra el plazo configurado en su tabla de CPs
+// (codigos_postales.plazo_entrega). Esta es la referencia con la que hay que
+// comparar: las tablas de canalizadores embebidas no las usa nadie.
+// Los habiles descuentan solo fines de semana (no feriados).
+// ---------------------------------------------------------------------------
+function buildQueryMotor_(cfg) {
+  const desde = normFechaStr_(cfg.fecha_desde) || '2026-09-01';
+  const hasta = normFechaStr_(cfg.fecha_hasta) || fmtISO_(new Date());
+  return [
+    'WITH base AS (',
+    '  SELECT',
+    "    REGEXP_EXTRACT(chk.cp, r'\\d{4}') AS cp4,",
+    '    chk.localidad AS localidad,',
+    '    chk.medio_envio_id AS medio,',
+    "    MOD(EXTRACT(DAYOFWEEK FROM DATE(chk.fecha, '" + CONFIG.TZ + "')) + 5, 7) AS s,",
+    "    DATE_DIFF(SAFE.PARSE_DATE('%d/%m/%Y', SPLIT(chk.fecha_entrega, ',')[OFFSET(0)]), DATE(chk.fecha, '" + CONFIG.TZ + "'), DAY) AS t",
+    '  FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
+    '  WHERE chk.medio_envio_id IN (' + Object.keys(CONFIG.MEDIOS).join(', ') + ')',
+    "    AND DATE(chk.fecha, '" + CONFIG.TZ + "') BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "    AND NULLIF(chk.fecha_entrega, '') IS NOT NULL",
+    "    AND NULLIF(chk.cp, '') IS NOT NULL",
+    "    AND SAFE.PARSE_DATE('%d/%m/%Y', SPLIT(chk.fecha_entrega, ',')[OFFSET(0)]) IS NOT NULL",
+    filtroTiendaSql_(cfg),
+    '),',
+    'bd AS (',
+    '  SELECT *,',
+    '    t - (',
+    '      IF(t >= IF(MOD(5 - s + 7, 7) = 0, 7, MOD(5 - s + 7, 7)), DIV(t - IF(MOD(5 - s + 7, 7) = 0, 7, MOD(5 - s + 7, 7)), 7) + 1, 0)',
+    '      + IF(t >= IF(MOD(6 - s + 7, 7) = 0, 7, MOD(6 - s + 7, 7)), DIV(t - IF(MOD(6 - s + 7, 7) = 0, 7, MOD(6 - s + 7, 7)), 7) + 1, 0)',
+    '    ) AS habiles',
+    '  FROM base',
+    '  WHERE t BETWEEN 0 AND 45',
+    '),',
+    'agg AS (',
+    '  SELECT cp4, ANY_VALUE(localidad) AS localidad, medio, habiles, COUNT(*) AS n',
+    '  FROM bd GROUP BY 1, 3, 4',
+    '),',
+    'plazos AS (',
+    '  SELECT CP_ID AS cp4, ANY_VALUE(plazo_entrega) AS plazo, ANY_VALUE(region) AS region',
+    '  FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.codigos_postales`',
+    '  GROUP BY CP_ID',
+    '),',
+    'ranked AS (',
+    '  SELECT a.cp4, a.localidad, a.medio, a.habiles, a.n,',
+    '    SUM(a.n) OVER (PARTITION BY a.cp4, a.medio) AS total,',
+    '    ROW_NUMBER() OVER (PARTITION BY a.cp4, a.medio ORDER BY a.n DESC, a.habiles) AS rn,',
+    '    p.plazo, p.region',
+    '  FROM agg a LEFT JOIN plazos p ON p.cp4 = a.cp4',
+    ')',
+    'SELECT cp4, localidad, medio, habiles, n, total, plazo, region',
+    'FROM ranked WHERE rn = 1 AND total >= 3',
+    'ORDER BY total DESC'
+  ].filter(Boolean).join('\n');
+}
+
+function getWebMotor(params) {
+  params = params || {};
+  const cfg = buildWebCfg_(params);
+  const rows = consultarBigQuery_(buildQueryMotor_(cfg), CONFIG.LOCATION);
+  const filas = rows.map(function (r) {
+    const plazo = (r.plazo == null || r.plazo === '') ? null : Number(r.plazo);
+    const habiles = Number(r.habiles);
+    return {
+      cp: r.cp4, localidad: r.localidad || '',
+      medio: CONFIG.MEDIOS[Number(r.medio)] || ('MEDIO ' + r.medio),
+      promesa_habiles: habiles,
+      plazo_configurado: plazo,
+      region: (r.region == null || r.region === '') ? '' : Number(r.region),
+      desvio: plazo == null ? null : habiles - plazo,
+      ventas: Number(r.total)
+    };
+  });
+  const resumen = { iguales: 0, menos: 0, mas: 0, sinPlazo: 0 };
+  filas.forEach(function (f) {
+    if (f.desvio == null) resumen.sinPlazo++;
+    else if (f.desvio === 0) resumen.iguales++;
+    else if (f.desvio < 0) resumen.menos++;
+    else resumen.mas++;
+  });
+  return { filas: filas, resumen: resumen, cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta } };
+}
+
+// ---------------------------------------------------------------------------
+// Detalle: una fila por venta con promesa, con el courier real que despacho.
+// ---------------------------------------------------------------------------
+function buildQueryDetalleCumplimiento_(cfg, limite) {
+  return baseCumplimientoSql_(cfg, true) + '\n' + [
+    'SELECT *,',
+    '  CASE WHEN ref IS NOT NULL AND prom IS NOT NULL THEN DATE_DIFF(ref, prom, DAY) END AS atraso_entrega',
+    'FROM base',
+    'ORDER BY atraso_entrega DESC',
+    'LIMIT ' + limite
+  ].join('\n');
+}
+
+function getWebDetalleCumplimiento(params) {
+  params = params || {};
+  const limite = Math.min(parseInt(params.limite || '5000', 10), 50000);
+  const cfg = buildWebCfg_(params);
+  const rows = consultarBigQuery_(buildQueryDetalleCumplimiento_(cfg, limite), CONFIG.LOCATION_LOGISTICA);
+  const hoy = parseISO_(fmtISO_(new Date()));
+  const excluidas = {};
+  const filas = [];
+  rows.forEach(function (r) {
+    if (esExcluido_(r.estado)) { sumaExcluida_(excluidas, r.estado, 1); return; }
+    const prom = parseISO_(r.prom);
+    const real = parseISO_(r.ref);
+    let estado = 'EN PLAZO', atraso = null, situacion = '';
+    if (real && prom) {
+      atraso = diffDays_(prom, real);
+      estado = atraso <= 0 ? 'A TIEMPO' : 'TARDE';
+    } else if (!real && prom && prom.getTime() < hoy.getTime()) {
+      estado = 'VENCIDA SIN ENTREGA';
+      situacion = NOMBRE_CATEGORIA_[categoriaEstado_(r.estado)] || '';
+      atraso = diffDays_(prom, hoy);
+    }
+    filas.push({
+      id_venta: r.id_venta,
+      fecha_compra: r.fecha_compra,
+      tienda: r.tienda || '',
+      codigo_postal: r.cp4,
+      localidad: r.localidad || '',
+      medio: CONFIG.MEDIOS[Number(r.medio_envio_id)] || ('MEDIO ' + r.medio_envio_id),
+      courier: r.carrier,
+      tipo_entrega: r.tipo_entrega,
+      fecha_prometida: r.prom || '',
+      fecha_real: r.ref || '',
+      atraso_dias: atraso,
+      estado_real: estado,
+      situacion_vencida: situacion,
+      estado_despacho: r.estado || '',
+      deposito: r.deposito || '',
+      tracking: r.tracking || ''
+    });
+  });
+  return { filas: filas, excluidas: excluidas, cfg: { fecha_desde: cfg.fecha_desde, fecha_hasta: cfg.fecha_hasta } };
 }
 
 // ---------------------------------------------------------------------------
@@ -968,19 +1266,19 @@ function buildQueryDepositos_(cfg) {
     '    (delivered_at IS NULL AND arrived_for_pickup_at IS NULL) AS sin_entrega',
     '  FROM `' + CONFIG.TABLA_LOGISTICA + '`',
     "  WHERE channel = 'WEB'",
-    "    AND DATE(ordered_at) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "    AND DATE(ordered_at, 'America/Argentina/Buenos_Aires') BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
     '    AND NOT is_preorder AND NOT is_modified AND NOT is_cancelled',
     filtroCarrier,
     ')',
     'SELECT deposito, dispatch_status,',
     '  COUNT(*) AS ventas,',
-    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE()) AS vencidas,',
-    '  COUNTIF(sin_entrega AND prom >= CURRENT_DATE()) AS en_plazo,',
-    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE() AND DATE_DIFF(CURRENT_DATE(), prom, DAY) BETWEEN 1 AND 3) AS venc_1_3d,',
-    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE() AND DATE_DIFF(CURRENT_DATE(), prom, DAY) BETWEEN 4 AND 7) AS venc_4_7d,',
-    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE() AND DATE_DIFF(CURRENT_DATE(), prom, DAY) BETWEEN 8 AND 15) AS venc_8_15d,',
-    '  COUNTIF(sin_entrega AND prom < CURRENT_DATE() AND DATE_DIFF(CURRENT_DATE(), prom, DAY) >= 16) AS venc_16d_mas,',
-    '  IFNULL(SUM(IF(sin_entrega AND prom < CURRENT_DATE(), DATE_DIFF(CURRENT_DATE(), prom, DAY), 0)), 0) AS suma_dias_venc',
+    "  COUNTIF(sin_entrega AND prom < CURRENT_DATE('America/Argentina/Buenos_Aires')) AS vencidas,",
+    "  COUNTIF(sin_entrega AND prom >= CURRENT_DATE('America/Argentina/Buenos_Aires')) AS en_plazo,",
+    "  COUNTIF(sin_entrega AND prom < CURRENT_DATE('America/Argentina/Buenos_Aires') AND DATE_DIFF(CURRENT_DATE('America/Argentina/Buenos_Aires'), prom, DAY) BETWEEN 1 AND 3) AS venc_1_3d,",
+    "  COUNTIF(sin_entrega AND prom < CURRENT_DATE('America/Argentina/Buenos_Aires') AND DATE_DIFF(CURRENT_DATE('America/Argentina/Buenos_Aires'), prom, DAY) BETWEEN 4 AND 7) AS venc_4_7d,",
+    "  COUNTIF(sin_entrega AND prom < CURRENT_DATE('America/Argentina/Buenos_Aires') AND DATE_DIFF(CURRENT_DATE('America/Argentina/Buenos_Aires'), prom, DAY) BETWEEN 8 AND 15) AS venc_8_15d,",
+    "  COUNTIF(sin_entrega AND prom < CURRENT_DATE('America/Argentina/Buenos_Aires') AND DATE_DIFF(CURRENT_DATE('America/Argentina/Buenos_Aires'), prom, DAY) >= 16) AS venc_16d_mas,",
+    "  IFNULL(SUM(IF(sin_entrega AND prom < CURRENT_DATE('America/Argentina/Buenos_Aires'), DATE_DIFF(CURRENT_DATE('America/Argentina/Buenos_Aires'), prom, DAY), 0)), 0) AS suma_dias_venc",
     'FROM b',
     'GROUP BY 1, 2',
     'ORDER BY 1, 2'
@@ -1041,7 +1339,7 @@ function buildQuery_(cfg, limite) {
   return [
     'SELECT',
     '  chk.id                                                        AS id_venta,',
-    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha))                      AS fecha_compra,",
+    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha, 'America/Argentina/Buenos_Aires'))                      AS fecha_compra,",
     "  REGEXP_EXTRACT(chk.cp, r'\\d{4}')                             AS codigo_postal,",
     '  chk.localidad                                                 AS localidad,',
     '  chk.tienda                                                    AS tienda,',
@@ -1053,7 +1351,7 @@ function buildQuery_(cfg, limite) {
     'FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
     'LEFT JOIN `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_MASTER + '.despachos_medios` dm',
     '  ON dm.idDespachoMedio = chk.medio_envio_id',
-    "WHERE DATE(chk.fecha) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "WHERE DATE(chk.fecha, 'America/Argentina/Buenos_Aires') BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
     "  AND NULLIF(chk.fecha_entrega, '') IS NOT NULL",
     "  AND NULLIF(chk.cp, '') IS NOT NULL",
     filtroTienda,
@@ -1077,7 +1375,7 @@ function buildQueryAgrupada_(cfg) {
 
   return [
     'SELECT',
-    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha))                      AS fecha_compra,",
+    "  FORMAT_DATE('%Y-%m-%d', DATE(chk.fecha, 'America/Argentina/Buenos_Aires'))                      AS fecha_compra,",
     "  REGEXP_EXTRACT(chk.cp, r'\\d{4}')                             AS codigo_postal,",
     '  chk.medio_envio_id                                            AS medio_envio_id,',
     "  CASE WHEN NULLIF(chk.sucursal_oca, '') IS NOT NULL",
@@ -1086,7 +1384,7 @@ function buildQueryAgrupada_(cfg) {
     '  ANY_VALUE(chk.localidad)                                      AS localidad,',
     '  COUNT(*)                                                      AS n',
     'FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_CHECKOUT + '.' + CONFIG.TABLA_CHECKOUT + '` chk',
-    "WHERE DATE(chk.fecha) BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
+    "WHERE DATE(chk.fecha, 'America/Argentina/Buenos_Aires') BETWEEN DATE('" + desde + "') AND DATE('" + hasta + "')",
     "  AND NULLIF(chk.fecha_entrega, '') IS NOT NULL",
     "  AND NULLIF(chk.cp, '') IS NOT NULL",
     filtroTienda,
@@ -1203,7 +1501,8 @@ function addDays_(d, n) {
 const FERIADOS_ = {
   '2026-01-01': 1, '2026-02-16': 1, '2026-02-17': 1, '2026-03-24': 1, '2026-04-02': 1, '2026-04-03': 1,
   '2026-05-01': 1, '2026-05-25': 1, '2026-06-15': 1, '2026-06-20': 1, '2026-07-09': 1, '2026-08-17': 1,
-  '2026-10-12': 1, '2026-11-23': 1, '2026-12-08': 1, '2026-12-25': 1
+  '2026-10-12': 1, '2026-11-09': 1, '2026-11-23': 1, '2026-12-08': 1, '2026-12-25': 1
+  // 9/11: feriado nacional (visita del Papa, calendario oficial 2026).
   // , '2026-03-23': 1, '2026-07-10': 1, '2026-12-07': 1
 };
 function esFeriado_(d) { return FERIADOS_[fmtISO_(d)] === 1; }

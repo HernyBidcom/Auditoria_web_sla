@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Auditoría Web — Promesas vs Canalizadores</title>
+  <title>Auditoría Web — Promesa vs entrega real</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -93,17 +93,17 @@
         <img class="brand-logo" alt="Bidcom" src="data:image/png;base64,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">
         <div class="brand-text">
           <div class="brand-title">Auditoría Web</div>
-          <div class="brand-sub">Promesas vs canalizadores</div>
+          <div class="brand-sub">Promesa vs entrega real</div>
         </div>
       </div>
       <nav id="nav">
         <div class="nav-group">Análisis</div>
-        <a data-tab="dashboard" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg><span class="label">Dashboard</span></a>
-        <a data-tab="detalle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="label">Detalle</span></a>
-        <a data-tab="hipotesis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="label">Hipótesis SLA opuesto</span></a>
+        <a data-tab="dashboard" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg><span class="label">Cumplimiento</span></a>
+        <a data-tab="motor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span class="label">Motor de promesa</span></a>
         <a data-tab="depositos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-8h6v8"/></svg><span class="label">Depósitos</span></a>
-        <a data-tab="cruce"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg><span class="label">Cruce auditoría × real</span></a>
-        <a data-tab="referencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span class="label">Referencias</span></a>
+        <a data-tab="detalle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="label">Detalle</span></a>
+        <div class="nav-group">Referencia</div>
+        <a data-tab="referencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span class="label">Canalizadores (legado)</span></a>
       </nav>
       <div class="sidebar-foot">Inteligencia Operativa / Bidcom — Datos desde BigQuery</div>
     </aside>
@@ -116,7 +116,6 @@
           <div class="field"><label for="hasta">Hasta</label><input type="date" id="hasta" value="2026-09-30"></div>
           <div class="field"><label for="tiendas">Tiendas</label><input type="text" id="tiendas" value="gadnic,bidcom" style="width:110px"></div>
           <div class="field"><label for="canal">Courier</label><select id="canal"><option value="">Todos</option></select></div>
-          <div class="field"><label for="habiles">Hábiles</label><select id="habiles"><option value="SI">Sí</option><option value="NO">No</option></select></div>
           <button id="btnCargar">Cargar</button>
         </div>
       </header>
@@ -124,44 +123,35 @@
       <div id="content">
         <section id="dashboard" class="section active">
           <div class="section-header">
-            <div class="section-title"><h1>Dashboard</h1><p>¿La fecha que prometemos se cumple? Entrega real por courier y, más abajo, diagnóstico contra el canalizador. Ventas web, sin preventas, modificadas ni canceladas.</p></div>
-            <div class="section-actions"><button id="btnCasos">⬇️ Casos a revisar (CSV)</button><button class="btn-secondary" id="btnCasosCourier">⬇️ Entregas tardías del courier (CSV)</button><button class="btn-secondary" id="btnDescargarReal">⬇️ CSV real vs prometido</button><button class="btn-secondary" id="btnDescargarResumen">⬇️ CSV diagnóstico</button></div>
+            <div class="section-title"><h1>Cumplimiento de la promesa</h1><p>La promesa la hace el checkout por CP y medio de envío; el courier se asigna recién al despachar. Acá se mide la fecha prometida al cliente contra la entrega real, atribuida al courier que efectivamente despachó. Web, sin preventas, modificadas ni canceladas.</p></div>
+            <div class="section-actions"><button id="btnCasos">⬇️ Casos a revisar (CSV)</button><button class="btn-secondary" id="btnCasosCourier">⬇️ Entregas tardías del courier (CSV)</button><button class="btn-secondary" id="btnDescargarCumplimiento">⬇️ CSV cumplimiento</button></div>
           </div>
-          <div id="real-loading" class="loading hidden"><div class="spinner"></div><span>Comparando promesa contra entrega real…</span></div>
-          <div id="real-body"></div>
-          <div class="section-title" style="margin:8px 0 14px"><h1 style="font-size:15px">Diagnóstico: promesa vs canalizador</h1><p>¿Mostramos una fecha más temprana que el mínimo que el courier dice poder cumplir?</p></div>
-          <div id="dash-loading" class="loading hidden"><div class="spinner"></div><span>Calculando…</span></div>
-          <div id="dash-body">
-            <div class="kpi-row" id="dash-kpis"></div>
-            <div class="grid-2">
-              <div class="block"><h2>Por canalizador</h2><div class="table-wrap"><table id="tab-canal"><thead><tr><th>Canalizador</th><th>Total</th><th>OK</th><th>Menores</th><th>% menores</th><th>Hipótesis</th></tr></thead><tbody></tbody></table></div></div>
-              <div class="block"><h2>Por mes</h2><div class="table-wrap"><table id="tab-mes"><thead><tr><th>Mes</th><th>Canal</th><th>Total</th><th>Menores</th><th>% menores</th><th>Hipótesis</th></tr></thead><tbody></tbody></table></div></div>
-            </div>
-            <div class="block"><h2>Top 15 CPs con promesas menores</h2><div class="table-wrap"><table id="tab-topcp"><thead><tr><th>Canalizador</th><th>CP</th><th>Localidad</th><th>Tipo</th><th>Menores</th></tr></thead><tbody></tbody></table></div></div>
+          <div id="cum-loading" class="loading hidden"><div class="spinner"></div><span>Comparando promesa contra entrega real…</span></div>
+          <div id="cum-body"></div>
+        </section>
+
+        <section id="motor" class="section">
+          <div class="section-header">
+            <div class="section-title"><h1>Motor de promesa del checkout</h1><p>Qué promete realmente el checkout por CP y medio (moda en días hábiles, solo descuenta fines de semana) contra el plazo configurado en su propia tabla de CPs. Esta es la referencia con la que hay que comparar: las tablas de canalizadores embebidas no las usa nadie.</p></div>
+            <div class="section-actions"><button class="btn-secondary" id="btnDescargarMotor">⬇️ CSV motor de promesa</button></div>
           </div>
+          <div class="filter-bar"><input type="text" id="motorFiltro" placeholder="Buscar CP o localidad…" style="width:260px"><select id="motorMedio"><option value="">Todos los medios</option></select><select id="motorDesvio"><option value="">Todos los desvíos</option><option value="IGUAL">Cumple lo configurado</option><option value="MENOS">Promete menos que lo configurado</option><option value="MAS">Promete más que lo configurado</option></select></div>
+          <div id="motor-loading" class="loading hidden"><div class="spinner"></div><span>Reconstruyendo la regla de promesa…</span></div>
+          <div id="motor-body"></div>
         </section>
 
         <section id="detalle" class="section">
           <div class="section-header">
-            <div class="section-title"><h1>Detalle</h1><p>Una fila por venta web</p></div>
+            <div class="section-title"><h1>Detalle</h1><p>Una fila por venta web con promesa: courier real que despachó, medio del checkout, fecha prometida y entrega real. Ordenado por atraso.</p></div>
             <div class="section-actions"><button class="btn-secondary" id="btnDescargarDetalle">⬇️ CSV detalle</button></div>
           </div>
           <div class="filter-bar">
             <input type="text" id="detFiltro" placeholder="Buscar por id, CP, localidad…" style="width:260px">
-            <select id="detResultado"><option value="">Todos los resultados</option><option value="OK">OK</option><option value="PROMESA MENOR AL CANALIZADOR">Promesa menor</option><option value="SIN REFERENCIA DE CP">Sin referencia</option></select>
-            <select id="detCanal"><option value="">Todos los canalizadores</option></select>
+            <select id="detEstado"><option value="">Todos los estados</option><option value="A TIEMPO">A tiempo</option><option value="TARDE">Tarde</option><option value="VENCIDA SIN ENTREGA">Vencida sin entrega</option><option value="EN PLAZO">En plazo</option></select>
+            <select id="detCourier"><option value="">Todos los couriers</option></select>
           </div>
           <div id="det-loading" class="loading hidden"><div class="spinner"></div><span>Trayendo detalle…</span></div>
-          <div class="block"><div class="table-wrap"><table id="tab-detalle"><thead><tr><th>ID</th><th>Fecha compra</th><th>CP</th><th>Localidad</th><th>Canal</th><th>Tipo</th><th>Prometida</th><th>Plazo</th><th>Fecha mínima</th><th>Diff</th><th>Resultado</th><th>Hipótesis</th></tr></thead><tbody></tbody></table></div></div>
-        </section>
-
-        <section id="hipotesis" class="section">
-          <div class="section-header">
-            <div class="section-title"><h1>Hipótesis SLA opuesto</h1><p>Ventas donde la promesa parece usar el plazo del otro tipo de entrega</p></div>
-            <div class="section-actions"><button class="btn-secondary" id="btnDescargarHipotesis">⬇️ CSV hipótesis</button></div>
-          </div>
-          <div id="hip-loading" class="loading hidden"><div class="spinner"></div><span>Calculando…</span></div>
-          <div id="hip-body"></div>
+          <div class="block"><div class="table-wrap"><table id="tab-detalle"><thead><tr><th>ID</th><th>Fecha compra</th><th>CP</th><th>Localidad</th><th>Tienda</th><th>Medio</th><th>Courier real</th><th>Tipo</th><th>Prometida</th><th>Entrega real</th><th>Atraso (días)</th><th>Estado</th><th>Estado despacho</th></tr></thead><tbody></tbody></table></div></div>
         </section>
 
         <section id="depositos" class="section">
@@ -173,18 +163,9 @@
           <div id="dep-body"></div>
         </section>
 
-        <section id="cruce" class="section">
-          <div class="section-header">
-            <div class="section-title"><h1>Cruce auditoría × entrega real</h1><p>¿Las ventas con promesa menor al canalizador son las que llegan tarde?</p></div>
-            <div class="section-actions"><button id="btnCasos2">⬇️ Casos a revisar (CSV)</button><button class="btn-secondary" id="btnDescargarCruce">⬇️ CSV cruce</button></div>
-          </div>
-          <div id="cruce-loading" class="loading hidden"><div class="spinner"></div><span>Cruzando…</span></div>
-          <div id="cruce-body"></div>
-        </section>
-
         <section id="referencias" class="section">
           <div class="section-header">
-            <div class="section-title"><h1>Referencias</h1><p>Tabla de canalizadores por CP</p></div>
+            <div class="section-title"><h1>Canalizadores (legado)</h1><p>Tabla de canalizadores embebida en el script original. Queda solo como referencia: no corresponde ni a la regla que usa el checkout ni al SLA real de los couriers (verificado en octubre 2026).</p></div>
             <div class="section-actions"><button class="btn-secondary" id="btnDescargarRef">⬇️ CSV referencia</button></div>
           </div>
           <div class="filter-bar"><input type="text" id="refFiltro" placeholder="Buscar CP o canalizador…" style="width:260px"><select id="refCanal"><option value="">Todos</option></select></div>
@@ -197,9 +178,9 @@
 
   <script>
     (function(){
-      const tabs=['dashboard','detalle','hipotesis','depositos','cruce','referencias'];
+      const tabs=['dashboard','motor','depositos','detalle','referencias'];
       let tabActual='dashboard';
-      let dataDashboard=null, dataDetalle=[], dataReferencias=[], dataHip=null, dataReal=null, dataCruce=null, dataDep=null;
+      let dataCumplimiento=null, dataMotor=null, dataDetalle=[], dataDetalleExcl={}, dataReferencias=[], dataDep=null;
 
       function int(v){ return (v||0).toLocaleString('es-AR'); }
       function pct(v){ if(!v && v!==0) return '0,0%'; return (v*100).toFixed(1).replace('.',',')+'%'; }
@@ -213,14 +194,13 @@
         document.querySelectorAll('#nav a[data-tab]').forEach(function(a){ a.classList.toggle('active',a.dataset.tab===t); });
         tabs.forEach(function(x){ document.getElementById(x).classList.toggle('active',x===t); });
         if(t==='detalle' && dataDetalle.length===0) cargarDetalle();
-        if(t==='hipotesis' && !dataHip) cargarHipotesis();
-        if(t==='cruce' && !dataCruce) cargarCruce();
+        if(t==='motor' && !dataMotor) cargarMotor();
         if(t==='depositos' && !dataDep) cargarDepositos();
         if(t==='referencias' && dataReferencias.length===0) cargarReferencias();
       }
       document.querySelectorAll('#nav a[data-tab]').forEach(function(a){ a.addEventListener('click',function(){ mostrarTab(a.dataset.tab); }); });
 
-      function params(){ return { fecha_desde:document.getElementById('desde').value, fecha_hasta:document.getElementById('hasta').value, tiendas_web:document.getElementById('tiendas').value, canal:document.getElementById('canal').value, usar_dias_habiles:document.getElementById('habiles').value, limite: tabActual==='detalle'?'5000':'50000' }; }
+      function params(){ return { fecha_desde:document.getElementById('desde').value, fecha_hasta:document.getElementById('hasta').value, tiendas_web:document.getElementById('tiendas').value, canal:document.getElementById('canal').value, limite: tabActual==='detalle'?'5000':'50000' }; }
 
       function server(fn,args,ok,ko){
         // Los handlers van ANTES de llamar a la funcion: google.script.run.fn() no devuelve nada
@@ -233,81 +213,113 @@
         return '<div class="kpi"><div class="label">'+esc(label)+'</div><div class="value '+(cls||'')+'">'+esc(value)+'</div><div class="sub">'+esc(sub)+'</div></div>';
       }
 
-      function badgeResultado(r){
-        if(r==='OK') return '<span class="badge badge-green">OK</span>';
-        if(r==='PROMESA MENOR AL CANALIZADOR') return '<span class="badge badge-red">Menor</span>';
-        if(r==='SIN REFERENCIA DE CP') return '<span class="badge badge-orange">Sin ref</span>';
-        return '<span class="badge badge-gray">'+esc(r)+'</span>';
+      function badgeEstadoReal(r){
+        if(r.estado_real==='A TIEMPO') return '<span class="badge badge-green">A tiempo</span>';
+        if(r.estado_real==='TARDE') return '<span class="badge '+(r.atraso_dias>=4?'badge-red':'badge-orange')+'">Tarde '+r.atraso_dias+'d</span>';
+        if(r.estado_real==='VENCIDA SIN ENTREGA') return '<span class="badge badge-red">Vencida'+(r.situacion_vencida?' · '+esc(r.situacion_vencida):'')+'</span>';
+        return '<span class="badge badge-gray">En plazo</span>';
       }
 
+      // Exigible al courier = lo que entregó (a tiempo o tarde) + lo vencido que está en sus manos (en tránsito o entrega fallida)
+      function exigCourierCum(c){ return (c.entregadas||0)+(c.venc_courier||0)+(c.venc_fallida||0); }
+      function filaCumplimiento(c){
+        var exig=exigCourierCum(c);
+        var pEnt=(c.entregadas||0)?(c.a_tiempo||0)/c.entregadas:0;
+        var pCour=exig?(c.a_tiempo||0)/exig:0;
+        var atraso=(c.entregadas||0)?((c.suma_dif||0)/c.entregadas).toFixed(1).replace('.',','):'-';
+        return '<tr><td>'+esc(c.carrier)+'</td><td>'+int(c.ventas)+'</td><td>'+int(c.entregadas)+'</td>'+
+          '<td>'+pct(pEnt)+'</td>'+
+          '<td><span class="badge '+claseP(pCour)+'">'+pct(pCour)+'</span></td>'+
+          '<td>'+int(c.tarde_1d)+'</td><td>'+int(c.tarde_2_3d)+'</td><td>'+int(c.tarde_4d_mas)+'</td>'+
+          '<td>'+int(c.venc_courier)+'</td><td>'+int(c.venc_fallida)+'</td><td>'+int(c.venc_sin_despachar)+'</td><td>'+int(c.venc_otro)+'</td><td>'+int(c.venc_falta_dato)+'</td>'+
+          '<td>'+atraso+'</td></tr>';
+      }
+      function renderCumplimiento(){
+        var body=document.getElementById('cum-body');
+        var d=dataCumplimiento;
+        if(!d||!d.total||!d.total.ventas){ body.innerHTML='<div class="block empty">Sin ventas con promesa para el período/courier elegido.</div>'; return; }
+        var t=d.total;
+        var exig=exigCourierCum(t);
+        var pEnt=t.entregadas?t.a_tiempo/t.entregadas:0;
+        var pCour=exig?t.a_tiempo/exig:0;
+        var atraso=t.entregadas?(t.suma_dif/t.entregadas).toFixed(1).replace('.',','):'-';
+        var html='<div class="kpi-row">'+
+          kpi('','Ventas con promesa',int(t.ventas),d.cfg.fecha_desde+' a '+d.cfg.fecha_hasta)+
+          kpi('good','A tiempo (entregadas)',pct(pEnt),int(t.entregadas)+' entregadas registradas')+
+          kpi('bad','A tiempo (exigible courier)',pct(pCour),'entregadas + vencidas en manos del courier')+
+          kpi(parseFloat(atraso)>0?'bad':'good','Atraso promedio',atraso+' días','entrega real vs fecha prometida')+
+          kpi('warn','Vencidas sin entrega',int(t.vencidas),pct(t.ventas?t.vencidas/t.ventas:0)+' de las ventas')+
+          '</div>';
+        html+='<div class="block"><h2>Por courier real que despachó</h2><div class="table-wrap"><table><thead><tr><th>Courier</th><th>Ventas</th><th>Entregadas</th><th>% a tiempo (entregadas)</th><th>% a tiempo (exigible)</th><th>Tarde 1d</th><th>Tarde 2-3d</th><th>Tarde 4+d</th><th>Vencida en tránsito</th><th>Entrega fallida</th><th>Sin despachar (nuestro)</th><th>Otro estado</th><th>Falta fecha</th><th>Atraso prom.</th></tr></thead><tbody>'+
+          (d.porCourier||[]).map(filaCumplimiento).join('')+'</tbody></table></div></div>';
+        var semanas={}, carriers={};
+        (d.porSemana||[]).forEach(function(r){ semanas[r.semana]=1; carriers[r.carrier]=1; });
+        var sems=Object.keys(semanas).sort(), cs=Object.keys(carriers).sort();
+        var acc={}; (d.porSemana||[]).forEach(function(r){ acc[r.semana+'|'+r.carrier]=r; });
+        html+='<div class="block"><h2>Tendencia semanal (% a tiempo exigible, por semana de compra)</h2><div class="table-wrap"><table><thead><tr><th>Semana (lunes)</th>'+
+          cs.map(function(c){ return '<th>'+esc(c)+'</th>'; }).join('')+'</tr></thead><tbody>'+
+          sems.map(function(s){
+            return '<tr><td>'+esc(s)+'</td>'+cs.map(function(c){
+              var r=acc[s+'|'+c]; if(!r) return '<td>—</td>';
+              var ex=exigCourierCum(r); if(ex<20) return '<td title="'+int(r.ventas)+' ventas">n&lt;20</td>';
+              var p=(r.a_tiempo||0)/ex;
+              return '<td title="'+int(ex)+' exigibles de '+int(r.ventas)+' ventas"><span class="badge '+claseP(p)+'">'+pct(p)+'</span></td>';
+            }).join('')+'</tr>';
+          }).join('')+'</tbody></table></div></div>';
+        html+='<div class="block"><h2>Top CPs problemáticos por courier (entregas tarde + vencidas)</h2><div class="table-wrap"><table><thead><tr><th>Courier</th><th>CP</th><th>Localidad</th><th>Modo</th><th>Ventas</th><th>A tiempo</th><th>Tarde</th><th>Vencidas</th><th>Atraso prom.</th></tr></thead><tbody>'+
+          (d.topCPs||[]).map(function(r){
+            var atr=(r.entregadas||0)?((r.suma_dif||0)/r.entregadas).toFixed(1).replace('.',','):'-';
+            return '<tr><td>'+esc(r.carrier)+'</td><td>'+esc(r.cp)+'</td><td>'+esc(r.localidad)+'</td><td>'+esc(r.modo)+'</td><td>'+int(r.ventas)+'</td><td>'+int(r.a_tiempo)+'</td><td>'+int(r.tarde)+'</td><td>'+int(r.vencidas)+'</td><td>'+atr+'</td></tr>';
+          }).join('')+'</tbody></table></div></div>';
+        html+=notaExcl(d,'ventas');
+        html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)">'+
+          '<b>Cómo leerlo.</b> La promesa la hace el checkout por CP y medio de envío (moto, correo, sucursal); el courier se asigna recién al despachar, así que el courier de cada fila es el que efectivamente despachó el pedido. “% a tiempo (exigible)” = a tiempo ÷ (entregadas + vencidas en tránsito o con entrega fallida); lo que nunca salió de nuestro depósito o no tiene fecha del courier se muestra aparte y no se le carga al courier. En “A RETIRAR” se mide contra la llegada a sucursal. Se excluyen preventas, modificadas y canceladas; las demoradas (falta de stock) y rebotadas (incidencia externa) se cuentan aparte. Un pedido con varios bultos aporta la entrega del último paquete. Atraso negativo = entrega antes de lo prometido.</div>';
+        body.innerHTML=html;
+      }
       function cargarDashboard(forzar){
-        loading('dash-loading',true);
+        loading('cum-loading',true);
         setStatus('Consultando BigQuery…');
-        cargarReal(forzar);
         var p=params(); if(forzar===true) p.forzar=true;
-        server('getWebDashboard', p, function(d){
-          dataDashboard=d;
-          loading('dash-loading',false);
-          document.getElementById('dash-kpis').innerHTML=
-            kpi('','Total ventas',int(d.total),d.cfg.fecha_desde+' a '+d.cfg.fecha_hasta)+
-            kpi('good','OK',int(d.ok),pct(d.ok/d.total))+
-            kpi('bad','Menores',int(d.menores),pct(d.menores/d.total))+
-            kpi('warn','Hipótesis SLA opuesto',int(d.hipotesis),pct(d.hipotesis/d.total))+
-            kpi('','Sin referencia',int(d.sinRef),'CP no encontrado')+
-            kpi('','Sin fecha',int(d.sinFecha),'campo vacío')+
-            kpi('','Courier aún no operativo',int(d.noOperativo||0),'compra anterior al alta');
-          document.querySelector('#tab-canal tbody').innerHTML=(d.porCanal||[]).map(function(c){
-            return '<tr><td>'+esc(c.canal)+'</td><td>'+int(c.total)+'</td><td>'+int(c.ok)+'</td><td>'+int(c.menores)+'</td><td>'+pct(c.total?c.menores/c.total:0)+'</td><td>'+int(c.hipotesis)+'</td></tr>';
-          }).join('') || '<tr><td colspan="6" class="empty">Sin datos</td></tr>';
-          document.querySelector('#tab-mes tbody').innerHTML=(d.porMes||[]).map(function(m){
-            return '<tr><td>'+esc(m.mes)+'</td><td>'+esc(m.canal)+'</td><td>'+int(m.total)+'</td><td>'+int(m.menores)+'</td><td>'+pct(m.total?m.menores/m.total:0)+'</td><td>'+int(m.hipotesis)+'</td></tr>';
-          }).join('') || '<tr><td colspan="6" class="empty">Sin datos</td></tr>';
-          document.querySelector('#tab-topcp tbody').innerHTML=(d.topCPs||[]).map(function(c){
-            return '<tr><td>'+esc(c.canal)+'</td><td>'+esc(c.cp)+'</td><td>'+esc(c.localidad)+'</td><td>'+esc(c.tipo)+'</td><td>'+int(c.menores)+'</td></tr>';
-          }).join('') || '<tr><td colspan="5" class="empty">Sin datos</td></tr>';
-          setStatus('Listo. '+int(d.total)+' ventas analizadas.'+(d.cache?' (desde caché, 20 min)':''));
-        }, function(){ loading('dash-loading',false); });
+        server('getWebCumplimiento', p, function(d){
+          dataCumplimiento=d;
+          loading('cum-loading',false);
+          renderCumplimiento();
+          setStatus('Listo. '+int(d.total.ventas)+' ventas con promesa analizadas.'+(d.cache?' (desde caché, 20 min)':''));
+        }, function(){ loading('cum-loading',false); });
       }
 
       function cargarDetalle(){
         loading('det-loading',true);
-        server('getWebDetalle', params(), function(rows){
-          dataDetalle=rows;
+        server('getWebDetalleCumplimiento', params(), function(d){
+          dataDetalle=d.filas||[];
+          dataDetalleExcl=d.excluidas||{};
           loading('det-loading',false);
           renderDetalle();
-          setStatus('Detalle listo: '+int(rows.length)+' filas.');
+          setStatus('Detalle listo: '+int(dataDetalle.length)+' filas.'+(Object.keys(dataDetalleExcl).length?' (excluidas '+Object.keys(dataDetalleExcl).map(function(k){return int(dataDetalleExcl[k])+' '+k.toLowerCase()+'s';}).join(', ')+')':''));
         }, function(){ loading('det-loading',false); });
       }
       function renderDetalle(){
         var q=norm(document.getElementById('detFiltro').value||'');
-        var res=document.getElementById('detResultado').value;
-        var canal=document.getElementById('detCanal').value;
+        var estado=document.getElementById('detEstado').value;
+        var courier=document.getElementById('detCourier').value;
         var filas=dataDetalle.filter(function(r){
-          var txt=norm([r.id_venta,r.codigo_postal,r.localidad,r.canalizador,r.tipo_entrega].join(' '));
+          var txt=norm([r.id_venta,r.codigo_postal,r.localidad,r.courier,r.medio,r.tienda].join(' '));
           if(q && !txt.includes(q)) return false;
-          if(res && r.resultado!==res) return false;
-          if(canal && r.canalizador!==canal) return false;
+          if(estado && r.estado_real!==estado) return false;
+          if(courier && r.courier!==courier) return false;
           return true;
         });
         var tbody=document.querySelector('#tab-detalle tbody');
         tbody.innerHTML=filas.slice(0,500).map(function(r){
-          return '<tr><td>'+esc(r.id_venta)+'</td><td>'+esc(r.fecha_compra)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+esc(r.canalizador)+'</td><td>'+esc(r.tipo_entrega)+'</td><td>'+esc(r.fecha_prometida)+'</td><td>'+(r.plazo_canalizador_dias==null?'':r.plazo_canalizador_dias)+'</td><td>'+esc(r.fecha_minima_teorica)+'</td><td>'+(r.diferencia_dias==null?'':r.diferencia_dias)+'</td><td>'+badgeResultado(r.resultado)+'</td><td>'+esc(r.hipotesis_usa_sla_opuesto)+'</td></tr>';
-        }).join('') || '<tr><td colspan="12" class="empty">Sin datos</td></tr>';
-        if(filas.length>500) tbody.insertAdjacentHTML('afterbegin','<tr><td colspan="12" style="text-align:center;color:var(--muted-foreground)">Mostrando 500 de '+int(filas.length)+' filas</td></tr>');
+          return '<tr><td>'+esc(r.id_venta)+'</td><td>'+esc(r.fecha_compra)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+esc(r.tienda)+'</td><td>'+esc(r.medio)+'</td><td>'+esc(r.courier)+'</td><td>'+esc(r.tipo_entrega)+'</td><td>'+esc(r.fecha_prometida)+'</td><td>'+esc(r.fecha_real)+'</td><td>'+(r.atraso_dias==null?'—':r.atraso_dias)+'</td><td>'+badgeEstadoReal(r)+'</td><td>'+esc(r.estado_despacho)+'</td></tr>';
+        }).join('') || '<tr><td colspan="13" class="empty">Sin datos</td></tr>';
+        if(filas.length>500) tbody.insertAdjacentHTML('afterbegin','<tr><td colspan="13" style="text-align:center;color:var(--muted-foreground)">Mostrando 500 de '+int(filas.length)+' filas</td></tr>');
       }
       document.getElementById('detFiltro').addEventListener('input', renderDetalle);
-      document.getElementById('detResultado').addEventListener('change', renderDetalle);
-      document.getElementById('detCanal').addEventListener('change', renderDetalle);
+      document.getElementById('detEstado').addEventListener('change', renderDetalle);
+      document.getElementById('detCourier').addEventListener('change', renderDetalle);
 
 
-      var CAMPOS_REAL=['envios','con_entrega','a_tiempo','tarde_1d','tarde_2_3d','tarde_4d_mas','en_plazo_sin_entrega','suma_dif_dias','venc_courier','venc_otro','venc_sin_despachar','venc_fallida','venc_falta_dato'];
-      function sumaReal(filas){
-        var t={}; CAMPOS_REAL.forEach(function(k){ t[k]=0; });
-        filas.forEach(function(r){ CAMPOS_REAL.forEach(function(k){ t[k]+=r[k]||0; }); });
-        return t;
-      }
-      // Exigible al courier = lo que entregó (a tiempo o tarde) + lo vencido que está en sus manos (en tránsito o entrega fallida)
-      function exigCourier(t){ return t.con_entrega+t.venc_courier+t.venc_fallida; }
       function notaExcl(d,tipoCnt){
         var e=(d&&d.excluidas)||{}; var partes=[];
         if(e.DEMORADO) partes.push(int(e.DEMORADO)+' demoradas (falta de stock)');
@@ -315,60 +327,50 @@
         return partes.length?'<div class="block" style="font-size:12px;color:var(--muted-foreground)"><b>Excluidas del análisis:</b> '+partes.join(' y ')+(tipoCnt?' ('+tipoCnt+')':'')+'.</div>':'';
       }
       function claseP(p){ return p>=0.9?'badge-green':(p>=0.7?'badge-orange':'badge-red'); }
-      function filaReal(label1,label2,t){
-        var exig=exigCourier(t);
-        var pEnt=t.con_entrega?t.a_tiempo/t.con_entrega:0;
-        var pCour=exig?t.a_tiempo/exig:0;
-        var dif=t.con_entrega?(t.suma_dif_dias/t.con_entrega).toFixed(1).replace('.',','):'-';
-        return '<tr><td>'+esc(label1)+'</td><td>'+esc(label2)+'</td><td>'+int(t.envios)+'</td><td>'+int(t.con_entrega)+'</td><td>'+pct(pEnt)+'</td>'+
-          '<td><span class="badge '+claseP(pCour)+'">'+pct(pCour)+'</span></td><td>'+int(t.tarde_1d)+'</td><td>'+int(t.tarde_2_3d)+'</td><td>'+int(t.tarde_4d_mas)+'</td>'+
-          '<td>'+int(t.venc_courier)+'</td><td>'+int(t.venc_fallida)+'</td><td>'+int(t.venc_otro)+'</td><td>'+int(t.venc_sin_despachar)+'</td><td>'+int(t.venc_falta_dato)+'</td><td>'+dif+'</td></tr>';
-      }
-      function renderReal(){
-        var body=document.getElementById('real-body');
-        var filas=(dataReal&&dataReal.filas)||[];
-        if(!filas.length){ body.innerHTML='<div class="block empty">Sin entregas para el período/courier elegido.</div>'; return; }
-        if(!filas.some(function(r){ return r.semana; }) || filas[0].venc_courier===undefined){ body.innerHTML='<div class="error-box">El servidor devolvió datos de una versión vieja de Code.gs. Pegá el Code.gs actualizado y creá una versión nueva en Manage deployments.</div>'; return; }
-        var t=sumaReal(filas), exig=exigCourier(t);
-        var noAtrib=t.venc_sin_despachar+t.venc_otro+t.venc_falta_dato;
+      function renderMotor(){
+        var body=document.getElementById('motor-body');
+        var d=dataMotor;
+        if(!d||!d.filas.length){ body.innerHTML='<div class="block empty">Sin promesas para el período elegido.</div>'; return; }
+        var r=d.resumen, conPlazo=r.iguales+r.menos+r.mas;
         var html='<div class="kpi-row">'+
-          kpi('','Envíos',int(t.envios),dataReal.cfg.fecha_desde+' a '+dataReal.cfg.fecha_hasta)+
-          kpi('','Con entrega registrada',int(t.con_entrega),pct(t.envios?t.con_entrega/t.envios:0)+' del total')+
-          kpi('bad','A tiempo (sobre lo que tiene el courier)',pct(exig?t.a_tiempo/exig:0),'entregados + vencidos en tránsito o con entrega fallida')+
-          kpi('good','A tiempo (solo entregados)',pct(t.con_entrega?t.a_tiempo/t.con_entrega:0),'optimista: ignora lo no entregado')+
-          kpi('warn','Vencidas con el courier',int(t.venc_courier+t.venc_fallida),'en tránsito/ruta o entrega fallida')+
-          kpi('','Vencidas no atribuibles al courier',int(noAtrib),'sin despachar (incl. demoradas), otro estado o sin fecha del courier')+
+          kpi('','CPs con promesa',int(d.filas.length),'con 3+ ventas en el período')+
+          kpi('','CPs con plazo configurado',int(conPlazo),int(r.sinPlazo)+' sin dato en la tabla de CPs del checkout')+
+          kpi(r.menos?'bad':'good','Promete menos que lo configurado',int(r.menos),pct(conPlazo?r.menos/conPlazo:0)+' de los CPs con plazo — riesgo si el courier real no llega')+
+          kpi('','Promete más que lo configurado',int(r.mas),pct(conPlazo?r.mas/conPlazo:0)+' de los CPs con plazo — promesa con aire')+
           '</div>';
-        var head='<thead><tr><th>__A__</th><th>__B__</th><th>Envíos</th><th>Con entrega</th><th>% a tiempo (entregados)</th><th>% a tiempo (courier)</th><th>Tarde 1 día</th><th>Tarde 2-3 días</th><th>Tarde 4+ días</th><th>Vencida en tránsito</th><th>Entrega fallida</th><th>Otro estado</th><th>Sin despachar (nuestro)</th><th>Falta fecha courier</th><th>Atraso prom. (días)</th></tr></thead>';
-        var porCM={}; filas.forEach(function(r){ var k=r.carrier+'|'+r.modo; (porCM[k]=porCM[k]||[]).push(r); });
-        var claves=Object.keys(porCM).sort();
-        html+='<div class="block"><h2>Por courier y modo de entrega</h2><div class="table-wrap"><table>'+head.replace('__A__','Courier').replace('__B__','Modo')+'<tbody>'+
-          claves.map(function(k){ var pr=k.split('|'); return filaReal(pr[0],pr[1],sumaReal(porCM[k])); }).join('')+'</tbody></table></div></div>';
-        var semanas={}; filas.forEach(function(r){ if(r.semana) semanas[r.semana]=1; });
-        var sems=Object.keys(semanas).sort();
-        var acc={}; filas.forEach(function(r){ var k=r.semana+'|'+r.carrier+'|'+r.modo; if(!acc[k]) acc[k]=[]; acc[k].push(r); });
-        html+='<div class="block"><h2>Tendencia semanal (% a tiempo sobre lo que tiene el courier, por semana de compra)</h2><div class="table-wrap"><table><thead><tr><th>Semana (lunes)</th>'+
-          claves.map(function(k){ return '<th>'+esc(k.replace('|',' · '))+'</th>'; }).join('')+'</tr></thead><tbody>'+
-          sems.map(function(s){
-            return '<tr><td>'+esc(s)+'</td>'+claves.map(function(k){
-              var rs=acc[s+'|'+k]; if(!rs) return '<td>—</td>';
-              var x=sumaReal(rs), ex=exigCourier(x);
-              if(ex<20) return '<td title="'+x.envios+' envíos">n&lt;20</td>';
-              var p=x.a_tiempo/ex; return '<td title="'+int(ex)+' exigibles de '+int(x.envios)+' envíos"><span class="badge '+claseP(p)+'">'+pct(p)+'</span></td>';
-            }).join('')+'</tr>';
-          }).join('')+'</tbody></table></div></div>';
-        html+=notaExcl(dataReal,'envíos');
-        html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)">'+
-          '<b>Cómo leerlo.</b> “% a tiempo (courier)” = envíos a tiempo ÷ (entregados + vencidos que están en tránsito/ruta o con entrega fallida). Las vencidas “sin despachar” (no salieron de nuestro depósito: preparado, en preparación, en espera, modificar), “otro estado” y “falta fecha courier” (el ERP dice entregado pero el courier no informó fecha) se muestran aparte y no se cargan al courier. '+
-          'En “A RETIRAR” se mide contra la llegada a sucursal. Entregar y Andreani empiezan a informarse el 9/9 y el 26/9; la última semana está en curso.</div>';
+        html+='<div class="block"><h2>Promesa real por CP y medio vs plazo configurado</h2><div class="table-wrap"><table id="tab-motor"><thead><tr><th>CP</th><th>Localidad</th><th>Medio</th><th>Promesa real (hábiles)</th><th>Plazo configurado</th><th>Región</th><th>Desvío</th><th>Ventas</th></tr></thead><tbody></tbody></table></div></div>';
+        html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)"><b>Cómo leerlo.</b> “Promesa real” es la moda de lo que el checkout prometió en el período (días hábiles desde la compra, descontando solo fines de semana). “Plazo configurado” sale de la tabla de CPs del checkout. Desvío negativo = prometemos más rápido de lo que dice nuestra propia configuración; positivo = prometemos con aire. El courier se elige después, así que la promesa de por sí no distingue OCA de Andreani o Entregar: usá esta tabla como referencia de qué se promete en cada zona.</div>';
         body.innerHTML=html;
+        renderMotorFilas();
       }
-      function cargarReal(forzar){
-        loading('real-loading',true);
+      function renderMotorFilas(){
+        var q=norm(document.getElementById('motorFiltro').value||'');
+        var medio=document.getElementById('motorMedio').value;
+        var desvio=document.getElementById('motorDesvio').value;
+        var filas=((dataMotor&&dataMotor.filas)||[]).filter(function(r){
+          var txt=norm([r.cp,r.localidad,r.medio].join(' '));
+          if(q && !txt.includes(q)) return false;
+          if(medio && r.medio!==medio) return false;
+          if(desvio==='IGUAL' && r.desvio!==0) return false;
+          if(desvio==='MENOS' && !(r.desvio!=null && r.desvio<0)) return false;
+          if(desvio==='MAS' && !(r.desvio!=null && r.desvio>0)) return false;
+          return true;
+        });
+        var tbody=document.querySelector('#tab-motor tbody');
+        tbody.innerHTML=filas.slice(0,500).map(function(r){
+          var dv=r.desvio==null?'<span class="badge badge-gray">sin plazo</span>':(r.desvio===0?'<span class="badge badge-green">igual</span>':(r.desvio<0?'<span class="badge badge-red">'+r.desvio+'</span>':'<span class="badge badge-orange">+'+r.desvio+'</span>'));
+          return '<tr><td>'+esc(r.cp)+'</td><td>'+esc(r.localidad)+'</td><td>'+esc(r.medio)+'</td><td>'+r.promesa_habiles+'</td><td>'+(r.plazo_configurado==null?'—':r.plazo_configurado)+'</td><td>'+(r.region===''?'—':r.region)+'</td><td>'+dv+'</td><td>'+int(r.ventas)+'</td></tr>';
+        }).join('') || '<tr><td colspan="8" class="empty">Sin datos</td></tr>';
+        if(filas.length>500) tbody.insertAdjacentHTML('afterbegin','<tr><td colspan="8" style="text-align:center;color:var(--muted-foreground)">Mostrando 500 de '+int(filas.length)+' CPs</td></tr>');
+      }
+      function cargarMotor(forzar){
+        loading('motor-loading',true);
+        setStatus('Reconstruyendo la regla de promesa…');
         var p=params(); if(forzar===true) p.forzar=true;
-        server('getWebReal', p, function(d){
-          dataReal=d; loading('real-loading',false); renderReal();
-        }, function(){ loading('real-loading',false); });
+        server('getWebMotor', p, function(d){
+          dataMotor=d; loading('motor-loading',false); renderMotor();
+          setStatus('Motor de promesa listo: '+int(d.filas.length)+' CPs.');
+        }, function(){ loading('motor-loading',false); });
       }
 
 
@@ -426,78 +428,6 @@
         body.innerHTML=html;
       }
 
-      function cargarCruce(forzar){
-        loading('cruce-loading',true);
-        setStatus('Cruzando auditoría con entrega real…');
-        var p=params(); if(forzar===true) p.forzar=true;
-        server('getWebCruce', p, function(d){
-          dataCruce=d; loading('cruce-loading',false); renderCruce();
-          setStatus('Cruce listo: '+int(d.total)+' ventas.'+(d.cache?' (desde caché, 20 min)':''));
-        }, function(){ loading('cruce-loading',false); });
-      }
-      var ESTADOS_CRUCE=['A_TIEMPO','TARDE','VENC_COURIER','VENC_FALLIDA','VENC_OTRO','VENC_SIN_DESPACHAR','VENC_FALTA_DATO','EN_PLAZO'];
-      function sumEstados(filas){
-        var t={n:0}; ESTADOS_CRUCE.forEach(function(k){ t[k]=0; });
-        filas.forEach(function(r){ t[r.estado]=(t[r.estado]||0)+r.n; t.n+=r.n; });
-        return t;
-      }
-      function filaCruce(c1,c2,t){
-        var exig=t.A_TIEMPO+t.TARDE+t.VENC_COURIER+t.VENC_FALLIDA, pc=exig?t.A_TIEMPO/exig:0;
-        return '<tr><td>'+esc(c1)+'</td><td>'+esc(c2)+'</td><td>'+int(t.n)+'</td><td>'+int(t.A_TIEMPO)+'</td><td>'+int(t.TARDE)+'</td><td>'+int(t.VENC_COURIER)+'</td><td>'+int(t.VENC_FALLIDA)+'</td><td>'+int(t.VENC_OTRO)+'</td><td>'+int(t.VENC_SIN_DESPACHAR)+'</td><td>'+int(t.VENC_FALTA_DATO)+'</td><td>'+int(t.EN_PLAZO)+'</td><td><span class="badge '+claseP(pc)+'">'+pct(pc)+'</span></td></tr>';
-      }
-      function renderCruce(){
-        var body=document.getElementById('cruce-body');
-        var filas=(dataCruce&&dataCruce.filas)||[];
-        if(!filas.length){ body.innerHTML='<div class="block empty">Sin datos para el período/courier elegido.</div>'; return; }
-        var head='<thead><tr><th>__A__</th><th>Resultado auditoría</th><th>Ventas</th><th>A tiempo</th><th>Tarde</th><th>Vencida en tránsito</th><th>Entrega fallida</th><th>Otro estado</th><th>Sin despachar (nuestro)</th><th>Falta fecha courier</th><th>En plazo</th><th>% a tiempo (courier)</th></tr></thead>';
-        function grupo(r){ return r.resultado==='OK'?'OK':(r.resultado==='PROMESA MENOR AL CANALIZADOR'?'PROMESA MENOR':'OTROS ('+r.resultado+')'); }
-        var porC={}; filas.forEach(function(r){ var k=r.canal+'|'+grupo(r); (porC[k]=porC[k]||[]).push(r); });
-        var claves=Object.keys(porC).sort();
-        var html='<div class="block"><h2>Por canalizador y resultado de la auditoría</h2><div class="table-wrap"><table>'+head.replace('__A__','Canalizador')+'<tbody>'+
-          claves.map(function(k){ var pr=k.split('|'); return filaCruce(pr[0],pr[1],sumEstados(porC[k])); }).join('')+'</tbody></table></div></div>';
-        var hip=filas.filter(function(r){ return r.hipotesis==='SI'; });
-        if(hip.length){ var th=sumEstados(hip);
-          html+='<div class="block"><h2>Casos “SLA opuesto”</h2><div class="table-wrap"><table>'+head.replace('__A__','Segmento')+'<tbody>'+filaCruce('Hipótesis SLA opuesto','—',th)+'</tbody></table></div></div>'; }
-        html+=notaExcl(dataCruce,'ventas');
-        html+='<div class="block" style="font-size:12px;color:var(--muted-foreground)"><b>Cómo leerlo.</b> Si el % a tiempo de “PROMESA MENOR” es bastante peor que el de “OK”, la auditoría está detectando el problema real. Si ambos son parecidos, el atraso no se explica por el plazo del canalizador (operación del courier o promesa mal calculada en general). “% a tiempo (courier)” cuenta solo lo entregado y lo vencido que está en manos del courier (en tránsito o entrega fallida); lo que nunca salió del depósito o no tiene fecha del courier se muestra aparte. “En plazo” = promesa todavía no vencida y sin entrega. Se excluyen preventas, modificadas y canceladas.</div>';
-        body.innerHTML=html;
-      }
-
-      function cargarHipotesis(){
-        loading('hip-loading',true);
-        setStatus('Calculando hipótesis…');
-        server('getWebHipotesis', params(), function(d){
-          dataHip=d;
-          loading('hip-loading',false);
-          renderHipotesis();
-          setStatus('Hipótesis listas: '+int(d.grupos)+' grupos.'+(d.cache?' (desde caché, 20 min)':''));
-        }, function(){ loading('hip-loading',false); });
-      }
-      function renderHipotesis(){
-        var body=document.getElementById('hip-body');
-        var filas=(dataHip&&dataHip.filas)||[];
-        if(!filas.length){ body.innerHTML='<div class="block empty">No se encontraron casos de hipótesis SLA opuesto.</div>'; return; }
-        var casos=filas.reduce(function(s,r){ return s+r.n; },0);
-        var exactos=filas.filter(function(r){ return r.coincide_con_sla_opuesto==='SI'; }).reduce(function(s,r){ return s+r.n; },0);
-        var dom=filas.filter(function(r){ return r.tipo_entrega==='DOMICILIO'; }).reduce(function(s,r){ return s+r.n; },0);
-        var porCp={}; filas.forEach(function(r){ var k=r.canalizador+'|'+r.codigo_postal; if(!porCp[k]) porCp[k]={r:r,n:0}; porCp[k].n+=r.n; });
-        var top=Object.keys(porCp).map(function(k){ return porCp[k]; }).sort(function(a,b){ return b.n-a.n; }).slice(0,10);
-        var html='<div class="kpi-row">'+
-          kpi('','Casos hipótesis', int(casos), pct(dataHip.total?casos/dataHip.total:0))+
-          kpi('bad','Exactos con SLA opuesto', int(exactos), 'coinciden')+
-          kpi('','Domicilios afectados', int(dom), 'usarían plazo sucursal')+
-          '</div>';
-        html+='<div class="block"><h2>Casos con hipótesis SLA opuesto (agrupados por fecha de compra, CP y promesa)</h2><div class="table-wrap"><table id="tab-hip"><thead><tr><th>Fecha compra</th><th>CP</th><th>Localidad</th><th>Canal</th><th>Tipo</th><th>Prometida</th><th>Plazo correcto</th><th>Plazo opuesto</th><th>Coincide</th><th>Ventas</th></tr></thead><tbody>';
-        html+=filas.slice(0,500).map(function(r){
-          return '<tr><td>'+esc(r.fecha_compra)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+esc(r.canalizador)+'</td><td>'+esc(r.tipo_entrega)+'</td><td>'+esc(r.fecha_prometida)+'</td><td>'+(r.plazo_canalizador_dias==null?'':r.plazo_canalizador_dias)+'</td><td>'+(r.plazo_opuesto_dias==null?'':r.plazo_opuesto_dias)+'</td><td>'+esc(r.coincide_con_sla_opuesto)+'</td><td>'+int(r.n)+'</td></tr>';
-        }).join('');
-        html+='</tbody></table></div></div>';
-        html+='<div class="block"><h2>Top 10 CPs con hipótesis</h2><div class="table-wrap"><table id="tab-hipcp"><thead><tr><th>Canalizador</th><th>CP</th><th>Localidad</th><th>Ventas</th></tr></thead><tbody>';
-        html+=top.map(function(p){ var r=p.r; return '<tr><td>'+esc(r.canalizador)+'</td><td>'+esc(r.codigo_postal)+'</td><td>'+esc(r.localidad)+'</td><td>'+int(p.n)+'</td></tr>'; }).join('');
-        html+='</tbody></table></div></div>';
-        body.innerHTML=html;
-      }
-
       function cargarReferencias(){
         loading('ref-loading',true);
         server('getWebReferencias', {}, function(rows){
@@ -536,41 +466,28 @@
 
       document.getElementById('btnCargar').addEventListener('click', function(){
         // Al cambiar periodo/filtros hay que descartar lo ya cargado en las otras pestañas
-        dataDetalle=[]; dataHip=null; dataReal=null; dataCruce=null; dataDep=null; dataReferencias=dataReferencias;
-        document.getElementById('hip-body').innerHTML='';
-        document.getElementById('real-body').innerHTML='';
-        document.getElementById('cruce-body').innerHTML='';
+        dataDetalle=[]; dataDetalleExcl={}; dataMotor=null; dataCumplimiento=null; dataDep=null;
+        document.getElementById('motor-body').innerHTML='';
         document.getElementById('dep-body').innerHTML='';
         document.querySelector('#tab-detalle tbody').innerHTML='';
         cargarDashboard(true);
         if(tabActual==='detalle') cargarDetalle();
-        if(tabActual==='hipotesis') cargarHipotesis();
-        if(tabActual==='cruce') cargarCruce(true);
+        if(tabActual==='motor') cargarMotor(true);
         if(tabActual==='depositos') cargarDepositos(true);
       });
-      document.getElementById('btnDescargarResumen').addEventListener('click', function(){
-        if(!dataDashboard){ setStatus('Primero cargá el dashboard',true); return; }
-        var rows=dataDashboard.porCanal.map(function(c){ return { canalizador:c.canal, total:c.total, ok:c.ok, menores:c.menores, hipotesis:c.hipotesis }; });
-        descargarCSV('resumen_auditoria_web.csv',['canalizador','total','ok','menores','hipotesis'],rows);
+      document.getElementById('btnDescargarCumplimiento').addEventListener('click', function(){
+        if(!dataCumplimiento){ setStatus('Primero cargá el cumplimiento',true); return; }
+        var rows=dataCumplimiento.porCourier.map(function(c){ return { courier:c.carrier, ventas:c.ventas, entregadas:c.entregadas, a_tiempo:c.a_tiempo, tarde_1d:c.tarde_1d, tarde_2_3d:c.tarde_2_3d, tarde_4d_mas:c.tarde_4d_mas, vencidas:c.vencidas, venc_courier:c.venc_courier, venc_fallida:c.venc_fallida, venc_sin_despachar:c.venc_sin_despachar, venc_otro:c.venc_otro, venc_falta_dato:c.venc_falta_dato, suma_dif:c.suma_dif }; });
+        descargarCSV('cumplimiento_por_courier.csv', Object.keys(rows[0]), rows);
       });
       document.getElementById('btnDescargarDetalle').addEventListener('click', function(){
         if(!dataDetalle.length){ setStatus('Primero cargá el detalle',true); return; }
-        descargarCSV('detalle_auditoria_web.csv', Object.keys(dataDetalle[0]), dataDetalle);
+        descargarCSV('detalle_cumplimiento.csv', Object.keys(dataDetalle[0]), dataDetalle);
       });
-      document.getElementById('btnDescargarHipotesis').addEventListener('click', function(){
-        var filas=(dataHip&&dataHip.filas)||[];
-        if(!filas.length){ setStatus('No hay hipótesis para descargar',true); return; }
-        descargarCSV('hipotesis_sla_opuesto.csv', Object.keys(filas[0]), filas);
-      });
-      document.getElementById('btnDescargarReal').addEventListener('click', function(){
-        var filas=(dataReal&&dataReal.filas)||[];
+      document.getElementById('btnDescargarMotor').addEventListener('click', function(){
+        var filas=(dataMotor&&dataMotor.filas)||[];
         if(!filas.length){ setStatus('No hay datos para descargar',true); return; }
-        descargarCSV('real_vs_prometido.csv', Object.keys(filas[0]), filas);
-      });
-      document.getElementById('btnDescargarCruce').addEventListener('click', function(){
-        var filas=(dataCruce&&dataCruce.filas)||[];
-        if(!filas.length){ setStatus('No hay datos para descargar',true); return; }
-        descargarCSV('cruce_auditoria_real.csv', Object.keys(filas[0]), filas);
+        descargarCSV('motor_promesa_por_cp.csv', Object.keys(filas[0]), filas);
       });
       function descargarCasos(btn,alcance){
         var original=btn.textContent; btn.disabled=true; btn.textContent='Armando casos…';
@@ -586,7 +503,6 @@
         }, function(){ btn.disabled=false; btn.textContent=original; });
       }
       document.getElementById('btnCasos').addEventListener('click', function(){ descargarCasos(this,'revisar'); });
-      document.getElementById('btnCasos2').addEventListener('click', function(){ descargarCasos(this,'revisar'); });
       document.getElementById('btnCasosCourier').addEventListener('click', function(){ descargarCasos(this,'courier'); });
       document.getElementById('btnDescargarDep').addEventListener('click', function(){
         var filas=(dataDep&&dataDep.filas)||[];
@@ -599,13 +515,20 @@
       });
 
       function llenarCouriers(lista){
-        [['canal','Todos'],['detCanal','Todos los canalizadores'],['refCanal','Todos']].forEach(function(par){
+        [['canal','Todos'],['detCourier','Todos los couriers'],['refCanal','Todos']].forEach(function(par){
           var el=document.getElementById(par[0]); if(!el) return;
           el.innerHTML='<option value="">'+par[1]+'</option>'+lista.map(function(c){ return '<option value="'+esc(c)+'">'+esc(c.charAt(0)+c.slice(1).toLowerCase())+'</option>'; }).join('');
         });
       }
-      llenarCouriers(['OCA','ANDREANI','ENTREGAR']);
+      llenarCouriers(['OCA','ANDREANI','ENTREGAR','MOTO','HOP','QUADMINDS']);
       google.script.run.withSuccessHandler(function(l){ if(l&&l.length) llenarCouriers(l); }).getWebCouriers();
+      // Medios del checkout para el filtro del motor de promesa
+      ['MOTO','CORREO','SUCURSAL OCA','MOTO ESTANDAR'].forEach(function(m){
+        document.getElementById('motorMedio').insertAdjacentHTML('beforeend','<option value="'+esc(m)+'">'+esc(m)+'</option>');
+      });
+      document.getElementById('motorFiltro').addEventListener('input', renderMotorFilas);
+      document.getElementById('motorMedio').addEventListener('change', renderMotorFilas);
+      document.getElementById('motorDesvio').addEventListener('change', renderMotorFilas);
 
       mostrarTab('dashboard');
       cargarDashboard();
